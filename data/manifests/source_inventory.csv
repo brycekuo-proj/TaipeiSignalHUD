@@ -1,0 +1,11 @@
+id,name,source_url,format,license_status,role,notes
+signal_timing_index,臺北市路口號誌時制計畫,https://data.taipei/dataset/detail?id=0d639f73-cbcc-42c3-aa53-20efac199701,CSV,公開/免費,CORE,"2026-09-18 snapshot: 2809 records; detailed JSON is separate"
+timing_plan_table,時制計畫三合一報表左半邊,https://tcgbusfs.blob.core.windows.net/dotapp/timing_plan_table.json,JSON,公開資料來源,CORE,"24638 records; 2822 unique icid; time→plan schedule; InfoTime 2026-09-17"
+timing_plan,時制計畫三合一報表右半邊,https://tcgbusfs.blob.core.windows.net/dotapp/timing_plan.json,JSON,公開資料來源,CORE,"61807 records; 2820 unique icid; cycle/offset/subplan; InfoTime 2026-09-17"
+signal_locations,臺北市號誌位置,https://data.taipei/dataset/detail?id=4a599738-6550-448a-9a78-03b26c67e249,CSV,公開/免費,CORE,"2710 records; CP950/tab separated"
+speed_cameras,臺北市固定測速照相地點表,https://data.taipei/dataset/detail?id=745b8808-061f-4f5b-9a62-da1590c049a9,CSV,公開/免費,CORE,"143 records in current snapshot"
+tech_enforcement,臺北市智慧管理科技執法設備資料表,https://data.taipei/dataset/detail?id=986fa73e-c470-4ebf-9f35-3a1c9d2a8788,CSV,公開/免費,CORE,"95 records; source metadata updated 2026-08-21"
+vd_live_candidate,臺北市車輛偵測器(VD)資料,https://data.taipei/dataset/detail?id=e57afe7f-3c9e-4f31-9208-eed859a92600,XML,公開/免費,AUX,"Fetched XML ExchangeTime=2024-11-14; freshness failed; do not rely on it yet"
+signal_assets,臺北市公共管線圖資_交通號誌系統號誌,https://data.taipei/dataset/detail?id=5818c0cf-6cd1-4ddf-84a8-9aff0196dd73,XML,公開/免費,AUX,"Physical signal asset metadata; official note says reference only"
+osm,OpenStreetMap,https://www.openstreetmap.org/,OSM/PBF,ODbL,CORE_PLANNED,"Road topology/map matching; attribution/licensing review required"
+google_traffic,Google Routes traffic,https://developers.google.com/maps/documentation/routes,API,Google Maps Platform Terms,OPTIONAL,"Not required for MVP; billing/privacy/derived-data constraints"

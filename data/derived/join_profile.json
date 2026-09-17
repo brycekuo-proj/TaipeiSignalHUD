@@ -1,0 +1,57 @@
+{
+  "snapshot_date": "2026-09-18",
+  "timing_index": {
+    "records": 2809,
+    "unique_icid": 2809,
+    "unique_deviceid": 2809,
+    "valid_coordinates": 2807,
+    "duplicate_coordinate_keys_6dp": 2
+  },
+  "timing_plan": {
+    "records": 61807,
+    "unique_icid": 2820,
+    "unique_deviceid": 2820
+  },
+  "timing_plan_table": {
+    "records": 24638,
+    "unique_icid": 2822,
+    "unique_deviceid": 2822
+  },
+  "signal_locations": {
+    "records": 2710,
+    "valid_coordinates": 2699,
+    "duplicate_coordinate_keys_6dp": 2
+  },
+  "id_joins": {
+    "timing_index_icid_in_timing_plan": 2808,
+    "timing_index_icid_in_timing_plan_table": 2809,
+    "timing_index_device_in_timing_plan": 2808,
+    "timing_index_device_in_timing_plan_table": 2809,
+    "timing_plan_icid_missing_from_index": 12,
+    "timing_table_icid_missing_from_index": 13,
+    "timing_index_icid_missing_from_plan": 1,
+    "timing_index_icid_missing_from_table": 0
+  },
+  "location_reconciliation": {
+    "exact_coordinate_6dp_matches": 2620,
+    "exact_coordinate_plus_normalized_name_matches": 2499,
+    "coordinate_5dp_matches": 2620
+  },
+  "sample_missing_plan_icids": [
+    "I3XGH",
+    "I4UFB",
+    "I4VEL",
+    "I9ZPY",
+    "IBGPV",
+    "IDENZ",
+    "IJVM7",
+    "IL9TM",
+    "IPSFR",
+    "IQ6FQ",
+    "ITYHK",
+    "IXPCH"
+  ],
+  "sample_index_missing_plan_icids": [
+    "IL5GG"
+  ]
+}

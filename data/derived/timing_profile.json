@@ -1,0 +1,18 @@
+{
+  "snapshot_date": "2026-09-18",
+  "signal_timing_index_records": 2809,
+  "signal_location_records": 2710,
+  "speed_camera_records": 143,
+  "tech_enforcement_records": 95,
+  "timing_plan_table_records": 24638,
+  "timing_plan_table_unique_icid": 2822,
+  "timing_plan_records": 61807,
+  "timing_plan_unique_icid": 2820,
+  "timing_plan_unique_deviceid": 2820,
+  "timing_plan_info_time_latest": "2026-09-17T03:02:16+08:00",
+  "timing_plan_table_info_time_latest": "2026-09-17T03:02:21+08:00",
+  "timing_plan_nonzero_offset_records": 40125,
+  "timing_plan_zero_cycle_records": 5,
+  "vd_snapshot_exchange_time": "2024/11/14T16:46:02",
+  "vd_freshness_status": "FAIL_REQUIRES_RESEARCH"
+}

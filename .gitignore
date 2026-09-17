@@ -1,0 +1,7 @@
+# Raw downloaded datasets are reproducible and may be large/stale
+data/raw/
+
+# Local scratch
+.DS_Store
+*.tmp
+research/local/
