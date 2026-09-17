@@ -40,6 +40,38 @@ Examples:
 ⚠ 科技執法 680 m
 ```
 
+## Road-mode slot semantics
+
+### Surface road
+
+The three slots mean the next three applicable signalized intersections along the current directed road graph.
+
+### Elevated / expressway mainline
+
+At minimum, slot 1 must represent the **next reachable exit ramp's terminal/first controlling signal**, not any surface signal directly below the elevated road.
+
+Slots 2 and 3 may represent later reachable exit-ramp signals only if Phase 0 proves that ordering and ramp-to-signal mapping are reliable. Otherwise they remain `--` rather than inventing surface intersections.
+
+Example:
+
+```text
+市民高架 · 東向
+
+67 km/h
+
+1  下一出口：重慶北路   1.4 km   🟢 22 秒
+2  --
+3  --
+```
+
+Showing an exit signal does not imply that the system predicts or recommends taking that exit.
+
+### Already on an exit ramp
+
+- slot 1 = current ramp-terminal signal
+- slot 2/3 = subsequent applicable signals on the connected surface road, when topology is reliable
+- if the ramp forks and the active branch is unresolved, show `--` instead of choosing a nearby signal
+
 ## No-driving-advice rule
 
 UI 禁止顯示：

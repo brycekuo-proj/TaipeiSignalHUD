@@ -14,6 +14,7 @@
 
 `data/manifests/`
 - 資料來源、URL、格式、授權、更新狀態、使用角色
+- `raw_snapshot_YYYY-MM-DD.csv` 記錄本機 raw 檔名、大小、SHA-256 與修改時間，讓 GitHub 能追蹤本機使用的是哪一批原始快照
 - 進 Git
 
 ## Raw files currently fetched locally

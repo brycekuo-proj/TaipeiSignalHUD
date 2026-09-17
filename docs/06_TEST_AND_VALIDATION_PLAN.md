@@ -32,6 +32,10 @@ Measure:
 - elevated-vs-surface road discrimination
 - entrance/exit ramp transition accuracy
 - false surface-signal attachment while on grade-separated mainline
+- next-exit ramp identification on elevated / expressway mainlines
+- exit-ramp terminal-signal mapping accuracy
+- optional later-exit ordering if the MVP keeps slot 2/3 active on mainline
+- ambiguous ramp-fork downgrade behavior
 
 ### Layer 3 — Physical ground truth
 
@@ -89,6 +93,9 @@ Ground truth collection must not require unsafe phone interaction while driving.
 - ramp transition accuracy
 - next-3 ordering precision
 - false surface-signal rate while on elevated/expressway mainline
+- next-exit-signal mapping accuracy
+- optional later-exit ordering precision
+- ramp-terminal wrong-signal rate
 
 ### Timing
 - state accuracy
@@ -110,7 +117,8 @@ Ground truth collection must not require unsafe phone interaction while driving.
 
 Before App implementation is considered mature enough for public beta, planning target:
 
-- next-3 road ordering precision >= 98% on selected Tier-A corridors
+- next-3 road ordering precision >= 98% on selected Tier-A surface corridors
+- next-exit ramp-terminal signal mapping must be separately validated on Tier A-X elevated/expressway corridors; later exit slots are optional until validated
 - exact/narrow countdown only when empirical error distribution supports it
 - 95th-percentile large errors trigger automatic downgrade policy
 - false-confidence rate kept lower than raw coverage pressure

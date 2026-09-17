@@ -16,10 +16,10 @@ Deliverable:
 
 ## P0.2 — Official-data join
 
-- [ ] timing index ↔ timing_plan by `icid/deviceid`
-- [ ] timing index ↔ timing_plan_table
-- [ ] signal locations ↔ timing index
-- [ ] 統計 unmatched / duplicate / invalid coordinate
+- [x] timing index ↔ timing_plan by `icid/deviceid`
+- [x] timing index ↔ timing_plan_table
+- [x] signal locations ↔ timing index（coordinate/name reconciliation as secondary validation）
+- [x] 統計 unmatched / duplicate / invalid coordinate
 
 Deliverables:
 - `data/derived/join_profile.json`
@@ -27,9 +27,9 @@ Deliverables:
 
 ## P0.3 — Major-road coverage
 
-- [ ] 用官方路口名稱先做 name-based heuristic
-- [ ] 建立 Tier-A corridor coverage
-- [ ] 後續用 OSM road graph 修正名稱法的誤差
+- [x] 用官方路口名稱先做 name-based heuristic
+- [x] 建立 Tier-A corridor seed + preliminary heuristic coverage
+- [ ] 後續用 OSM / official directed road graph 修正名稱法的誤差並建立正式 coverage
 
 Deliverables:
 - `data/derived/major_road_name_coverage.csv`
@@ -45,7 +45,11 @@ Deliverables:
 - [ ] 對建國高架、市民高架、基隆路高架、環東大道、環河快速道路做專項驗證
 - [ ] 同類補測：新生高架、水源快速道路、橋梁/隧道/匝道
 - [ ] 驗證高架主線不會誤掛平面道路號誌
-- [ ] 驗證下匝道後何時才切換到平面號誌模型
+- [ ] 建立 elevated mainline → next reachable exit ramp → ramp-terminal signal mapping
+- [ ] 評估是否有足夠可靠性擴充到第 2/3 個後續出口槽位
+- [ ] 驗證高架主線顯示的是出口匝道號誌，而不是下方平面號誌
+- [ ] 驗證下匝道後何時把 ramp-terminal signal 提升為 primary slot，並續算平面後續號誌
+- [ ] 驗證匝道分叉不確定時降級 `--`
 - [ ] 文件化 ODbL attribution/compliance
 
 Deliverable:
@@ -93,3 +97,5 @@ App 開發前必須回答：
 6. 估計小巷是否真的優於不顯示？
 
 只有在這些問題有正面證據後，才進 Phase 1 Android MVP。
+
+目前狀態：**PROJECTIZED — PHASE 0 VALIDATION**。專案化價值已成立，但尚未取得 Phase 1 開發放行。

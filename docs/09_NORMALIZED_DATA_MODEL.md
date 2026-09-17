@@ -102,6 +102,30 @@ Fields:
 
 A vehicle's current road state is `road_link_id + carriageway_direction + structure_level + ramp_state`, not just nearest XY geometry.
 
+## `ramp_signal_targets`
+
+Maps an elevated/expressway exit to the first reliable signal movement that controls traffic leaving that ramp.
+
+Fields:
+- `ramp_target_id` PK
+- `mainline_road_link_id`
+- `exit_ramp_road_link_id`
+- `exit_name`
+- `exit_sequence_direction`
+- `ramp_terminal_approach_id`
+- `intersection_id`
+- `signal_direction_code`
+- `movement`
+- `mapping_confidence`
+- `fork_ambiguity` boolean
+- `source_refs[]`
+
+The mapping chain is:
+
+`mainline -> exit_ramp -> ramp_terminal_approach -> signal_movement`
+
+If an exit forks before the applicable signal and the active branch cannot be determined, the target must remain unresolved rather than selecting a nearby signal by distance.
+
 ## `intersection_approaches`
 
 Connect road graph to signal model.
@@ -171,6 +195,9 @@ Future HUD output contract.
 Fields:
 - `intersection_id`
 - `intersection_name`
+- `slot_role` — surface_next / next_exit_signal / current_ramp_terminal / downstream_surface
+- `exit_name` nullable
+- `source_road_link_id`
 - `approach_direction`
 - `movement`
 - `distance_m`

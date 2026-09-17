@@ -41,27 +41,34 @@ Possible `structure_level` values:
 
 ## Signal applicability
 
-Mainline elevated / expressway links normally must not inherit traffic signals from the surface street below.
+Mainline elevated / expressway links must not inherit arbitrary traffic signals from the surface street below. However, the HUD should still expose the signal that is operationally relevant to the next reachable exit ramp.
 
 When current matched state is an elevated / expressway mainline:
 
-- do not display surface-road signal countdowns merely because coordinates overlap
+- never attach surface-road signals merely because their XY coordinates overlap the mainline
 - continue to display current speed
 - continue to display applicable speed-camera / technology-enforcement alerts tied to the current carriageway
-- signal countdown can remain empty / `--` until the vehicle is confidently matched to an exit ramp or a signalized downstream surface approach
+- find the **next downstream reachable exit ramp** on the current carriageway
+- follow that ramp topology to its first signalized surface/terminal approach
+- display that signal as `NEXT_EXIT_SIGNAL` when the ramp-to-signal mapping is reliable
+- if the exit ramp has no signal, continue to the first downstream signal that directly controls traffic leaving that ramp
+- if the ramp or signal mapping is uncertain, display `--` rather than borrow a nearby surface-road signal
 
-## Exit-ramp rule without navigation intent
+## Exit-ramp signal rule without navigation intent
 
-TaipeiSignalHUD is not a navigation app, so it does not know in advance whether the driver intends to exit.
+TaipeiSignalHUD is not a navigation app and does not need to assume that the driver intends to exit. Showing the next exit's signal is informational only.
 
 Therefore:
 
-1. stay on elevated-mainline state while the trajectory remains consistent with the mainline
-2. do not pre-emptively switch to surface-road signals at an approaching interchange
-3. switch only when map matching has strong evidence that the vehicle entered the exit ramp / connector
-4. after the ramp is linked to a signalized surface approach, compute the next 1–3 applicable signals
+1. keep the vehicle road state on the elevated/expressway mainline while the trajectory remains consistent with the mainline
+2. identify the next reachable exit ramp downstream
+3. resolve `mainline -> exit_ramp -> ramp_terminal_approach -> signal_movement`
+4. show that terminal signal countdown explicitly as **下一出口號誌 / next-exit signal**
+5. only after Phase 0 proves stable ordering/mapping may the HUD precompute later second/third exit signals; otherwise leave those slots `--`
+6. do not switch the vehicle itself to the surface-road model until map matching confirms entry into the exit ramp
+7. once the vehicle actually enters the ramp, promote that ramp signal to the normal primary signal slot and compute subsequent surface signals
 
-This favors avoiding false information over showing an early but uncertain countdown.
+This preserves the correct road-level state while still giving useful signal information before the driver reaches the exit.
 
 ## Map-matching evidence
 
@@ -117,6 +124,8 @@ Offline and field tests must include:
 - remaining on elevated mainline through a surface intersection below
 - exiting to surface road
 - entering from one elevated corridor to another connector
+- next-exit ramp-terminal signal mapping while remaining on mainline
+- later-exit ordering only as an optional validated extension
 - parallel ramp/mainline ambiguity
 - GPS drift while stopped/slow on elevated structure
 - surface road directly below/adjacent to elevated road

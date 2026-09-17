@@ -11,7 +11,8 @@ TaipeiSignalHUD 是一個「台北市道路號誌資訊儀表」規劃專案。
 駕駛行進中只顯示必要資訊：
 
 - 當前 GPS 時速
-- 當前道路前方第 1 / 2 / 3 個適用路口的號誌燈色與剩餘秒數（預估）
+- 平面道路：沿目前有向道路前方第 1 / 2 / 3 個適用號誌的燈色與剩餘秒數（預估）
+- 高架/快速道路：至少顯示下一個可到達出口匝道的出口端第一顆可靠號誌；後續第 2/3 個出口是否顯示由 Phase 0 驗證決定
 - 固定測速 / 區間測速提示
 - 科技執法提示
 
@@ -23,8 +24,9 @@ TaipeiSignalHUD 是一個「台北市道路號誌資訊儀表」規劃專案。
 2. **主要道路優先高可信度**：官方號誌時制 + 路口/方向 + 同步模型。
 3. **小巷允許估計**：資料不足時以歷史模型 / GPS 觀測估計，UI 必須標示為約值或區間。
 4. **不確定就不顯示秒數**：顯示 `--`，不硬猜。
-5. **下一個三個路口是沿目前道路拓樸向前搜尋**，不是半徑內最近三個號誌。
-6. **號誌不假設永遠連續**：需處理時制切換、動態號誌、跳相、延長、閃光、臨時控制與資料失步。
+5. **平面道路的前三個號誌沿目前有向道路拓樸向前搜尋**，不是半徑內最近三個號誌。
+6. **高架/快速道路至少第一槽顯示下一個可到達出口匝道的出口端號誌**，不可誤抓正下方平面道路號誌；第 2/3 槽需經驗證後再決定。
+7. **號誌不假設永遠連續**：需處理時制切換、動態號誌、跳相、延長、閃光、臨時控制與資料失步。
 
 ## 目前已取得的原始資料（本機，不進 Git）
 
@@ -51,15 +53,17 @@ TaipeiSignalHUD 是一個「台北市道路號誌資訊儀表」規劃專案。
 - `docs/09_NORMALIZED_DATA_MODEL.md` — 標準化資料模型
 - `docs/10_PHASE0_BACKLOG.md` — Phase 0 研究/資料待辦（不含 App 開發）
 - `docs/11_MULTI_LEVEL_EXPRESSWAY_MODEL.md` — 高架/快速道路、平面道路、匝道與多層路網辨識
+- `docs/12_CURRENT_STATE_2026-09-18.md` — 目前全部決策、資料結果與 Phase 0 gate 的同步快照
 - `research/DATA_PROFILE_2026-09-18.md` — 時制資料剖析
 - `research/JOIN_PROFILE_2026-09-18.md` — 官方資料 join 覆蓋分析
 - `research/MAJOR_ROAD_COVERAGE_2026-09-18.md` — 主要道路路名 heuristic 覆蓋分析
 - `data/README.md` — 資料目錄規範
 - `data/manifests/source_inventory.csv` — 資料來源清單
 - `data/manifests/main_roads_taipei.csv` — MVP 主要道路初始優先表
+- `data/manifests/raw_snapshot_2026-09-18.csv` — 本機 raw 資料快照檔名、大小、SHA-256 與修改時間（raw 本體不進 Git）
 
 ## 專案狀態
 
-**Phase 0 — Planning & Data Research**
+**PROJECTIZED — Phase 0 Validation / Planning & Data Research**
 
-尚未開始 App 開發。
+已具備正式專案化價值；尚未通過 Phase 0 Go/No-Go，因此尚未開始 App 開發。

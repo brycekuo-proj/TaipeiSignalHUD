@@ -1,0 +1,8 @@
+﻿filename,bytes,sha256,local_mtime,git_policy
+taipei_signal_locations.csv,150844,4de42a369f6b6ba38df29ff2d357f8ad5aec7a237b8709edc431d77c3cfb29a7,2026-09-18T00:32:18+08:00,raw_not_committed
+taipei_signal_timing.csv,395094,31470ee386dda00208c240858706bc17c467cbbcbbb31ffe5213cdb69920fa49,2026-09-18T00:32:07+08:00,raw_not_committed
+taipei_speed_cameras.csv,12280,c87a397f23bd705b7f79622557285b0b3e1c8d99172a7b6feb1471272e781cb8,2026-09-18T00:32:21+08:00,raw_not_committed
+taipei_tech_enforcement.csv,16242,b7c59cf6f38df3e00440e6e568c92321d28ca7286e522bc946198da8e8ba1d3a,2026-09-18T00:36:03+08:00,raw_not_committed
+taipei_vd_live.xml,502557,c151a6cd7bbfb6e5758db022a0f26d7cd50a9b6b393b2f05b3841d22c52a03ee,2026-09-18T00:32:42+08:00,raw_not_committed
+timing_plan.json,38334889,ab7a7910a24c9416641b244fb337ecfd5796d15d1928131ade412e5695dcbc92,2026-09-18T00:37:10+08:00,raw_not_committed
+timing_plan_table.json,22013290,208cbf160bad41c6ac8028de5f7ac0803611624ff11c7d395e09935d2ccc1c6d,2026-09-18T00:34:22+08:00,raw_not_committed
