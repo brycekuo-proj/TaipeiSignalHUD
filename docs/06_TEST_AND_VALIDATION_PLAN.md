@@ -29,6 +29,9 @@ Measure:
 - opposite-direction rejection
 - side-street rejection
 - close-pair intersection handling
+- elevated-vs-surface road discrimination
+- entrance/exit ramp transition accuracy
+- false surface-signal attachment while on grade-separated mainline
 
 ### Layer 3 — Physical ground truth
 
@@ -45,6 +48,8 @@ Coverage dimensions:
 - weekday
 - weekend
 - major arterials
+- elevated / expressway corridors
+- entry and exit ramps
 - secondary roads
 - selected alleys
 - fixed-plan signals
@@ -80,7 +85,10 @@ Ground truth collection must not require unsafe phone interaction while driving.
 ### Road matching
 - current road accuracy
 - approach-direction accuracy
+- structure-level accuracy (surface/elevated/tunnel/bridge/ramp)
+- ramp transition accuracy
 - next-3 ordering precision
+- false surface-signal rate while on elevated/expressway mainline
 
 ### Timing
 - state accuracy

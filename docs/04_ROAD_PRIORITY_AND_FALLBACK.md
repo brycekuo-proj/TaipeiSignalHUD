@@ -37,6 +37,23 @@ Initial planning list (not yet a complete official classification):
 
 This list is a product-priority seed only. Before implementation it must be reconciled with official road class / OSM highway class and actual timing-plan coverage.
 
+## Tier A-X — Elevated / expressway corridors
+
+Multi-level roads are a first-class MVP mapping requirement because surface roads and elevated roads can overlap in XY coordinates.
+
+Priority validation corridors:
+- 建國南北高架道路
+- 市民高架道路
+- 基隆路高架道路
+- 環東大道
+- 環河南北快速道路 / 環河快速道路
+- 新生高架道路
+- 水源快速道路
+
+On an elevated/expressway mainline, do **not** inherit surface-road signal countdowns. Current speed and applicable enforcement alerts may continue, while signal countdown remains empty / `--` until an exit ramp or downstream signalized surface approach is confidently matched.
+
+See `docs/11_MULTI_LEVEL_EXPRESSWAY_MODEL.md`.
+
 ## Tier A requirements
 
 For a corridor to be marked production-ready:
@@ -85,6 +102,9 @@ A corridor may contain:
 - close paired intersections
 - offset coordinated groups
 - dynamic signal control
+- surface/elevated roads occupying nearly the same XY position
+- entrance/exit ramps and grade-separated connectors
+- bridges/tunnels whose nearest surface intersection is not applicable
 
 Therefore road traversal must return a typed sequence, not simply every coordinate point.
 

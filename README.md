@@ -50,6 +50,7 @@ TaipeiSignalHUD 是一個「台北市道路號誌資訊儀表」規劃專案。
 - `docs/08_TIMING_FIELD_DICTIONARY.md` — 時制欄位與方向/星期語義
 - `docs/09_NORMALIZED_DATA_MODEL.md` — 標準化資料模型
 - `docs/10_PHASE0_BACKLOG.md` — Phase 0 研究/資料待辦（不含 App 開發）
+- `docs/11_MULTI_LEVEL_EXPRESSWAY_MODEL.md` — 高架/快速道路、平面道路、匝道與多層路網辨識
 - `research/DATA_PROFILE_2026-09-18.md` — 時制資料剖析
 - `research/JOIN_PROFILE_2026-09-18.md` — 官方資料 join 覆蓋分析
 - `research/MAJOR_ROAD_COVERAGE_2026-09-18.md` — 主要道路路名 heuristic 覆蓋分析

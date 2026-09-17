@@ -73,11 +73,34 @@ Product-level road corridor entity.
 Fields:
 - `corridor_id` PK
 - `canonical_name`
-- `priority_tier` A/B/C
+- `priority_tier` A/B/C/A-X
 - `osm_relation_or_segment_refs[]`
 - `direction`
 - `official_plan_coverage`
 - `sync_coverage`
+
+## `road_links`
+
+Directed road-segment identity used for map matching. This table is required to distinguish stacked/parallel roads.
+
+Fields:
+- `road_link_id` PK
+- `corridor_id`
+- `from_node_id`
+- `to_node_id`
+- `carriageway_direction`
+- `road_class`
+- `structure_level` — surface/elevated/tunnel/bridge/ramp/unknown
+- `layer` nullable
+- `bridge` boolean/nullable
+- `tunnel` boolean/nullable
+- `is_ramp`
+- `ramp_role` — entrance/exit/connector/unknown
+- `parent_structure_id` nullable
+- `signal_applicability` — normal/mainline_none/downstream/unknown
+- `source_refs[]`
+
+A vehicle's current road state is `road_link_id + carriageway_direction + structure_level + ramp_state`, not just nearest XY geometry.
 
 ## `intersection_approaches`
 
@@ -87,6 +110,8 @@ Fields:
 - `approach_id` PK
 - `intersection_id`
 - `corridor_id`
+- `incoming_road_link_id`
+- `structure_level`
 - `incoming_bearing`
 - `movement` — through/left/right/mixed/unknown
 - `signal_direction_code`

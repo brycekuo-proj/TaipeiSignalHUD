@@ -40,8 +40,16 @@ Deliverables:
 - [ ] 決定 OSM extract 範圍與格式
 - [ ] 定義 map-matching 需要的道路欄位
 - [ ] 定義 next-3 traversal 規則
+- [ ] 建立 `road_link + carriageway_direction + structure_level + ramp_state` 狀態模型
 - [ ] 定義 elevated/ground/frontage/parallel-road ambiguity cases
+- [ ] 對建國高架、市民高架、基隆路高架、環東大道、環河快速道路做專項驗證
+- [ ] 同類補測：新生高架、水源快速道路、橋梁/隧道/匝道
+- [ ] 驗證高架主線不會誤掛平面道路號誌
+- [ ] 驗證下匝道後何時才切換到平面號誌模型
 - [ ] 文件化 ODbL attribution/compliance
+
+Deliverable:
+- `docs/11_MULTI_LEVEL_EXPRESSWAY_MODEL.md`
 
 ## P0.5 — Offset / phase synchronization research
 
