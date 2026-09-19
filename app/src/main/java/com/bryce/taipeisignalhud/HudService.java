@@ -326,8 +326,6 @@ public final class HudService extends Service implements LocationListener {
     private void requestMcpSnapshotIfNeeded() {
         if (demoMode || mcpClient == null || !mcpClient.isConfigured()) return;
         if (latestLocation == null || stableTravelBearingDeg == null) return;
-        if (locationFilter.isHighSpeedRoadMode()) return;
-
         long nowElapsed = SystemClock.elapsedRealtime();
         if (mcpRequestInFlight || nowElapsed - lastMcpRequestElapsedMs < 450L) return;
 
@@ -396,18 +394,18 @@ public final class HudService extends Service implements LocationListener {
             return;
         }
 
+        if (hasFreshMcpSnapshot()) {
+            renderMcpRows();
+            return;
+        }
+
         if (locationFilter.isHighSpeedRoadMode()) {
             lights[0].setSignal(TrafficLightView.State.UNKNOWN, "--");
             names[0].setText("高速／快速道路模式");
             lights[1].setSignal(TrafficLightView.State.UNKNOWN, "--");
-            names[1].setText("已抑制平面道路號誌");
+            names[1].setText("MCP 無匝道資料，已抑制平面號誌");
             lights[2].setSignal(TrafficLightView.State.UNKNOWN, "--");
             names[2].setText("等待匝道／降速匹配");
-            return;
-        }
-
-        if (hasFreshMcpSnapshot()) {
-            renderMcpRows();
             return;
         }
 

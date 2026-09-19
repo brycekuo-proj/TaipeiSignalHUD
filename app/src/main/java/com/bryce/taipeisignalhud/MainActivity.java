@@ -42,7 +42,7 @@ public final class MainActivity extends Activity {
         TextView title = text("TaipeiSignalHUD", 27, true);
         root.addView(title);
 
-        TextView subtitle = text("A37 Road Test · v0.0.6", 14, false);
+        TextView subtitle = text("A37 Road Test · v0.0.7", 14, false);
         subtitle.setTextColor(Color.DKGRAY);
         root.addView(subtitle);
 
@@ -79,7 +79,8 @@ public final class MainActivity extends Activity {
                 "• 停車時保留最後可靠行進方向與前方路口，燈色/倒數繼續更新，不再變灰。\n" +
                 "• MCP 約每 0.5 秒更新，手機端每 0.25 秒刷新，並扣除估算網路延遲避免倒數慢 1–2 秒。\n" +
                 "• MCP 逾時會自動退回本機算法。\n" +
-                "• 高速/快速道路高速度持續成立時，先抑制平面道路號誌，避免誤抓橋下路口。\n" +
+                "• 新生高架已接 MCP 匝道模式：高速/高架時仍詢問 MCP，優先顯示下一出口端號誌。\n" +
+                "• 其他高速/快速道路若 MCP 尚無匝道拓撲，才抑制平面道路號誌。\n" +
                 "• 複雜或無法可靠解析的時相仍顯示灰色「--」。\n" +
                 "• DEMO 只檢查顯示效果。\n\n" +
                 "道路測試時以現場交通號誌為準。",
