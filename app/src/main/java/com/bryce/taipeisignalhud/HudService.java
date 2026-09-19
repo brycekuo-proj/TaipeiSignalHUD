@@ -20,6 +20,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -31,6 +32,8 @@ import android.widget.TextView;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public final class HudService extends Service implements LocationListener {
     public static final String ACTION_START = "com.bryce.taipeisignalhud.START";
@@ -49,10 +52,16 @@ public final class HudService extends Service implements LocationListener {
     private LocationManager locationManager;
     private IntersectionStore intersectionStore;
     private SignalPlanStore signalPlanStore;
+    private HudMcpClient mcpClient;
     private final RoadLocationFilter locationFilter = new RoadLocationFilter();
+    private final ExecutorService mcpExecutor = Executors.newSingleThreadExecutor();
     private Location latestLocation;
     private List<IntersectionStore.Candidate> latestCandidates = Collections.emptyList();
     private Float stableTravelBearingDeg = null;
+    private HudMcpClient.Snapshot latestMcpSnapshot;
+    private long latestMcpReceivedElapsedMs = 0L;
+    private long lastMcpRequestElapsedMs = 0L;
+    private volatile boolean mcpRequestInFlight = false;
     private boolean demoMode = false;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -66,6 +75,7 @@ public final class HudService extends Service implements LocationListener {
     private final Runnable liveTicker = new Runnable() {
         @Override public void run() {
             if (!demoMode) {
+                requestMcpSnapshotIfNeeded();
                 renderLiveRows();
                 handler.postDelayed(this, 500L);
             }
@@ -102,6 +112,7 @@ public final class HudService extends Service implements LocationListener {
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
         intersectionStore = new IntersectionStore(this);
         signalPlanStore = new SignalPlanStore(this);
+        mcpClient = new HudMcpClient(this);
         createChannel();
     }
 
@@ -312,6 +323,60 @@ public final class HudService extends Service implements LocationListener {
         }
     }
 
+    private void requestMcpSnapshotIfNeeded() {
+        if (demoMode || mcpClient == null || !mcpClient.isConfigured()) return;
+        if (latestLocation == null || stableTravelBearingDeg == null) return;
+        if (locationFilter.isHighSpeedRoadMode()) return;
+
+        long nowElapsed = SystemClock.elapsedRealtime();
+        if (mcpRequestInFlight || nowElapsed - lastMcpRequestElapsedMs < 900L) return;
+
+        final Location requestLocation = new Location(latestLocation);
+        final float requestBearing = stableTravelBearingDeg;
+        final List<IntersectionStore.Candidate> requestCandidates =
+                latestCandidates == null ? Collections.emptyList()
+                        : new java.util.ArrayList<>(latestCandidates);
+
+        lastMcpRequestElapsedMs = nowElapsed;
+        mcpRequestInFlight = true;
+        mcpExecutor.execute(() -> {
+            HudMcpClient.Snapshot snapshot =
+                    mcpClient.fetch(requestLocation, requestBearing, requestCandidates);
+            handler.post(() -> {
+                mcpRequestInFlight = false;
+                if (snapshot != null && snapshot.ok) {
+                    latestMcpSnapshot = snapshot;
+                    latestMcpReceivedElapsedMs = SystemClock.elapsedRealtime();
+                    renderLiveRows();
+                }
+            });
+        });
+    }
+
+    private boolean hasFreshMcpSnapshot() {
+        return latestMcpSnapshot != null
+                && latestMcpSnapshot.ok
+                && SystemClock.elapsedRealtime() - latestMcpReceivedElapsedMs <= 3000L;
+    }
+
+    private void renderMcpRows() {
+        List<HudMcpClient.Row> rows = latestMcpSnapshot.rows;
+        for (int i = 0; i < 3; i++) {
+            if (rows == null || i >= rows.size()) {
+                lights[i].setSignal(TrafficLightView.State.UNKNOWN, "--");
+                names[i].setText(i == 0 ? "MCP 無前方號誌" : "—");
+                continue;
+            }
+            HudMcpClient.Row row = rows.get(i);
+            names[i].setText(row.name);
+            if (row.state == TrafficLightView.State.UNKNOWN || row.remainingSeconds < 0) {
+                lights[i].setSignal(TrafficLightView.State.UNKNOWN, "--");
+            } else {
+                lights[i].setSignal(row.state, Integer.toString(row.remainingSeconds));
+            }
+        }
+    }
+
     private void renderLiveRows() {
         if (demoMode) return;
 
@@ -327,6 +392,11 @@ public final class HudService extends Service implements LocationListener {
             names[1].setText("已抑制平面道路號誌");
             lights[2].setSignal(TrafficLightView.State.UNKNOWN, "--");
             names[2].setText("等待匝道／降速匹配");
+            return;
+        }
+
+        if (hasFreshMcpSnapshot()) {
+            renderMcpRows();
             return;
         }
 
@@ -401,6 +471,7 @@ public final class HudService extends Service implements LocationListener {
         demoMode = false;
         handler.removeCallbacks(demoTicker);
         handler.removeCallbacks(liveTicker);
+        mcpExecutor.shutdownNow();
         if (locationManager != null) {
             try { locationManager.removeUpdates(this); } catch (SecurityException ignored) {}
         }

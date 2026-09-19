@@ -10,8 +10,8 @@ android {
         applicationId = "com.bryce.taipeisignalhud"
         minSdk = 23
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.0.3-roadtest"
+        versionCode = 4
+        versionName = "0.0.4-roadtest"
     }
 
     buildTypes {

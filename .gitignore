@@ -10,3 +10,4 @@ research/local/
 .gradle/
 local.properties
 **/build/
+app/src/main/assets/mcp_runtime.json
