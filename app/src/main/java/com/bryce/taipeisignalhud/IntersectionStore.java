@@ -32,11 +32,16 @@ public final class IntersectionStore {
     public static final class Candidate {
         public final Intersection intersection;
         public final double distanceM;
+        public final double alongTrackM;
+        public final double crossTrackM;
         public final double relativeBearingDeg;
 
-        Candidate(Intersection intersection, double distanceM, double relativeBearingDeg) {
+        Candidate(Intersection intersection, double distanceM, double alongTrackM,
+                  double crossTrackM, double relativeBearingDeg) {
             this.intersection = intersection;
             this.distanceM = distanceM;
+            this.alongTrackM = alongTrackM;
+            this.crossTrackM = crossTrackM;
             this.relativeBearingDeg = relativeBearingDeg;
         }
     }
@@ -56,23 +61,50 @@ public final class IntersectionStore {
             return Collections.emptyList();
         }
 
-        boolean headingReliable = location.hasBearing() &&
-                (!location.hasSpeed() || location.getSpeed() >= 1.5f);
+        float speed = location.hasSpeed() ? location.getSpeed() : 0f;
+        boolean headingReliable = location.hasBearing() && speed >= 2.0f;
         double heading = normalizeBearing(location.getBearing());
+        double accuracy = location.hasAccuracy() ? Math.max(5.0, location.getAccuracy()) : 25.0;
+
+        double maxDistance = speed >= 12f ? 1800.0 : 1200.0;
+        double maxAngle = speed >= 12f ? 32.0 : 45.0;
+        double maxCrossTrack = Math.max(speed >= 12f ? 55.0 : 70.0, accuracy * 1.8);
 
         ArrayList<Candidate> result = new ArrayList<>();
         for (Intersection s : intersections) {
-            double distance = distanceMeters(location.getLatitude(), location.getLongitude(), s.latitude, s.longitude);
-            if (distance < 12.0 || distance > 1200.0) continue;
+            double distance = distanceMeters(
+                    location.getLatitude(), location.getLongitude(),
+                    s.latitude, s.longitude);
+            if (distance < 10.0 || distance > maxDistance) continue;
 
-            double bearing = bearingDegrees(location.getLatitude(), location.getLongitude(), s.latitude, s.longitude);
+            double bearing = bearingDegrees(
+                    location.getLatitude(), location.getLongitude(),
+                    s.latitude, s.longitude);
             double relative = headingReliable ? signedAngleDelta(heading, bearing) : 0.0;
-            if (headingReliable && Math.abs(relative) > 55.0) continue;
 
-            result.add(new Candidate(s, distance, relative));
+            double along;
+            double cross;
+            if (headingReliable) {
+                double rad = Math.toRadians(relative);
+                along = distance * Math.cos(rad);
+                cross = Math.abs(distance * Math.sin(rad));
+                if (along <= 8.0) continue;
+                if (Math.abs(relative) > maxAngle) continue;
+                if (cross > maxCrossTrack) continue;
+            } else {
+                along = distance;
+                cross = 0.0;
+            }
+
+            result.add(new Candidate(s, distance, along, cross, relative));
         }
 
-        Collections.sort(result, Comparator.comparingDouble(c -> c.distanceM));
+        // Prefer the geometrically closest point along the current travel corridor,
+        // then use cross-track distance to reject adjacent/parallel streets.
+        Collections.sort(result, Comparator
+                .comparingDouble((Candidate c) -> c.alongTrackM)
+                .thenComparingDouble(c -> c.crossTrackM)
+                .thenComparingDouble(c -> c.distanceM));
 
         ArrayList<Candidate> deduped = new ArrayList<>();
         Set<String> seenNames = new HashSet<>();
@@ -109,8 +141,7 @@ public final class IntersectionStore {
 
     private static String cleanupDisplayName(String s) {
         if (s == null) return "";
-        String out = s.replace('\u3000', ' ').replaceAll("\\s+", " ").trim();
-        return out;
+        return s.replace('\u3000', ' ').replaceAll("\\s+", " ").trim();
     }
 
     private static String normalizeName(String s) {
@@ -133,7 +164,8 @@ public final class IntersectionStore {
         double p2 = Math.toRadians(lat2);
         double dl = Math.toRadians(lon2 - lon1);
         double y = Math.sin(dl) * Math.cos(p2);
-        double x = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
+        double x = Math.cos(p1) * Math.sin(p2)
+                - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
         return normalizeBearing(Math.toDegrees(Math.atan2(y, x)));
     }
 
@@ -143,7 +175,6 @@ public final class IntersectionStore {
     }
 
     private static double signedAngleDelta(double from, double to) {
-        double d = (to - from + 540.0) % 360.0 - 180.0;
-        return d;
+        return (to - from + 540.0) % 360.0 - 180.0;
     }
 }

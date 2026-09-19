@@ -42,7 +42,7 @@ public final class MainActivity extends Activity {
         TextView title = text("TaipeiSignalHUD", 27, true);
         root.addView(title);
 
-        TextView subtitle = text("A37 Road Test · v0.0.1", 14, false);
+        TextView subtitle = text("A37 Road Test · v0.0.2", 14, false);
         subtitle.setTextColor(Color.DKGRAY);
         root.addView(subtitle);
 
@@ -72,11 +72,13 @@ public final class MainActivity extends Activity {
 
         TextView note = text(
                 "道路測試版功能：\n" +
-                "• 使用 A37 GPS 與行進方向找出前方 3 個候選號誌。\n" +
-                "• 每個路口只顯示 1 顆圓燈；同一顆燈支援紅／黃／綠，秒數在圓心。\n" +
-                "• Overlay 可直接拖動位置。\n" +
-                "• 目前尚未完成 phaseorder 解碼與現場相位同步，因此正式道路模式的燈號先顯示灰色「--」，不偽造倒數。\n" +
-                "• DEMO 僅用來檢查你指定的三色/圓心倒數視覺，不代表真實號誌。\n\n" +
+                "• 改用 GPS/GNSS 定位，移除行車時容易跳點的 Network Provider。\n" +
+                "• GPS 會做精度門檻、短期平滑、跳點排除與行進方向過濾。\n" +
+                "• 使用官方時制表、星期/時段計畫、cycle/offset 計算紅黃綠與剩餘秒數。\n" +
+                "• 每個路口只顯示 1 顆圓燈；同一顆燈紅／黃／綠切換，倒數在圓心。\n" +
+                "• 高速/快速道路高速度持續成立時，先抑制平面道路號誌，避免誤抓橋下路口。\n" +
+                "• 複雜或無法可靠解析的時相仍顯示灰色「--」。\n" +
+                "• DEMO 只檢查顯示效果。\n\n" +
                 "道路測試時以現場交通號誌為準。",
                 14, false);
         note.setTextColor(Color.rgb(65, 65, 65));

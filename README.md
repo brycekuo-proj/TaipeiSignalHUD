@@ -2,7 +2,9 @@
 
 TaipeiSignalHUD 是一個「台北市道路號誌資訊儀表」規劃專案。
 
-目前已進入 **A37 道路測試 APK** 階段：保留既有資料研究與演算法設計，同時加入 Android GPS 前方路口候選與 Overlay 實測。\n\n> v0.0.1-roadtest 的目標是驗證 GPS/heading 路口候選與 HUD 顯示；尚未完成 phaseorder 解碼與現場相位同步，因此正式道路模式不偽造燈色或秒數。
+目前已進入 **A37 道路測試 APK** 階段：保留既有資料研究與演算法設計，同時加入 Android GPS 前方路口候選與 Overlay 實測。
+
+> v0.0.2-roadtest 已接入官方時制表、星期/時段 active plan、cycle/offset 的紅黃綠與倒數估算，並改用 GPS/GNSS-only 的行車定位濾波。複雜時相或高速/高架層級無法可靠判定時仍降級顯示 `--`。
 
 ## 產品目標
 
@@ -62,4 +64,6 @@ TaipeiSignalHUD 是一個「台北市道路號誌資訊儀表」規劃專案。
 
 ## 專案狀態
 
-**PROJECTIZED — Phase 0 Validation + Android Road-Test Prototype**\n\n已開始 Android 實車驗證。v0.0.1-roadtest 會載入台北號誌位置、使用 GPS/heading 選出前方候選路口，並以單顆可變色圓燈 Overlay 顯示；真實燈色與倒數在相位校準完成前維持 UNKNOWN / `--`。
+**PROJECTIZED — Phase 0 Validation + Android Road-Test Prototype**
+
+已開始 Android 實車驗證。v0.0.2-roadtest 會載入台北號誌位置與時制資料，以 GPS/heading 選出前方候選路口，並以單顆可變色圓燈 Overlay 顯示估算燈色與倒數；不可靠的複雜時相或多層道路狀態維持 UNKNOWN / `--`。

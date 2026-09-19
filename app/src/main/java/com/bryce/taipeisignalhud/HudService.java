@@ -6,7 +6,6 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
-import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -30,6 +29,7 @@ import android.view.WindowManager;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.util.Collections;
 import java.util.List;
 
 public final class HudService extends Service implements LocationListener {
@@ -45,8 +45,13 @@ public final class HudService extends Service implements LocationListener {
     private View overlayView;
     private final TrafficLightView[] lights = new TrafficLightView[3];
     private final TextView[] names = new TextView[3];
+
     private LocationManager locationManager;
-    private IntersectionStore store;
+    private IntersectionStore intersectionStore;
+    private SignalPlanStore signalPlanStore;
+    private final RoadLocationFilter locationFilter = new RoadLocationFilter();
+    private Location latestLocation;
+    private List<IntersectionStore.Candidate> latestCandidates = Collections.emptyList();
     private boolean demoMode = false;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -55,6 +60,15 @@ public final class HudService extends Service implements LocationListener {
             TrafficLightView.State.GREEN,
             TrafficLightView.State.RED,
             TrafficLightView.State.YELLOW
+    };
+
+    private final Runnable liveTicker = new Runnable() {
+        @Override public void run() {
+            if (!demoMode) {
+                renderLiveRows();
+                handler.postDelayed(this, 500L);
+            }
+        }
     };
 
     private final Runnable demoTicker = new Runnable() {
@@ -85,7 +99,8 @@ public final class HudService extends Service implements LocationListener {
         super.onCreate();
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
-        store = new IntersectionStore(this);
+        intersectionStore = new IntersectionStore(this);
+        signalPlanStore = new SignalPlanStore(this);
         createChannel();
     }
 
@@ -97,28 +112,27 @@ public final class HudService extends Service implements LocationListener {
             return START_NOT_STICKY;
         }
 
-        if (!hasLocationPermission() || (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this))) {
+        if (!hasLocationPermission()
+                || (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this))) {
             stopSelf();
             return START_NOT_STICKY;
         }
 
         startForeground(NOTIFICATION_ID, buildNotification());
         showOverlayIfNeeded();
-        startLocationUpdates();
 
         demoMode = ACTION_DEMO.equals(action);
         handler.removeCallbacks(demoTicker);
+        handler.removeCallbacks(liveTicker);
+
         if (demoMode) {
-            demoSeconds[0] = 22;
-            demoSeconds[1] = 41;
-            demoSeconds[2] = 3;
-            demoStates[0] = TrafficLightView.State.GREEN;
-            demoStates[1] = TrafficLightView.State.RED;
-            demoStates[2] = TrafficLightView.State.YELLOW;
+            resetDemo();
             renderDemoRows();
             handler.postDelayed(demoTicker, 1000L);
         } else {
             renderWaitingRows();
+            startLocationUpdates();
+            handler.post(liveTicker);
         }
         return START_STICKY;
     }
@@ -134,7 +148,7 @@ public final class HudService extends Service implements LocationListener {
                 : new Notification.Builder(this);
         return b.setSmallIcon(android.R.drawable.ic_menu_mylocation)
                 .setContentTitle("TaipeiSignalHUD 道路測試")
-                .setContentText("前方路口 Overlay 與 GPS 正在運作")
+                .setContentText("GPS、前方路口與號誌倒數正在運作")
                 .setOngoing(true)
                 .setContentIntent(pi)
                 .build();
@@ -180,7 +194,7 @@ public final class HudService extends Service implements LocationListener {
             name.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
             name.setSingleLine(true);
             name.setEllipsize(TextUtils.TruncateAt.END);
-            name.setMaxWidth(dp(210));
+            name.setMaxWidth(dp(230));
             name.setMinWidth(dp(120));
             row.addView(name, new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -226,8 +240,10 @@ public final class HudService extends Service implements LocationListener {
                         downY = event.getRawY();
                         return true;
                     case MotionEvent.ACTION_MOVE:
-                        overlayParams.x = Math.max(0, startX - Math.round(event.getRawX() - downX));
-                        overlayParams.y = Math.max(0, startY + Math.round(event.getRawY() - downY));
+                        overlayParams.x = Math.max(
+                                0, startX - Math.round(event.getRawX() - downX));
+                        overlayParams.y = Math.max(
+                                0, startY + Math.round(event.getRawY() - downY));
                         try {
                             windowManager.updateViewLayout(overlayView, overlayParams);
                         } catch (Exception ignored) {
@@ -243,14 +259,32 @@ public final class HudService extends Service implements LocationListener {
     private void startLocationUpdates() {
         if (!hasLocationPermission()) return;
         try {
-            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 800L, 2f, this);
-            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 1500L, 5f, this);
-            }
+            // Road-test v0.0.2: GPS/GNSS only. NETWORK_PROVIDER caused large jumps
+            // and parallel-road errors during driving.
+            locationManager.removeUpdates(this);
+            locationManager.requestLocationUpdates(
+                    LocationManager.GPS_PROVIDER,
+                    500L,
+                    0f,
+                    this);
+
             Location last = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-            if (last != null && !demoMode) renderCandidates(last);
+            if (last != null) {
+                Location filtered = locationFilter.add(last);
+                if (filtered != null) updateMatchedLocation(filtered);
+            }
         } catch (SecurityException ignored) {
         }
+    }
+
+    private void updateMatchedLocation(Location location) {
+        latestLocation = location;
+        if (locationFilter.isHighSpeedRoadMode()) {
+            latestCandidates = Collections.emptyList();
+        } else {
+            latestCandidates = intersectionStore.findAhead(location, 3);
+        }
+        renderLiveRows();
     }
 
     private void renderWaitingRows() {
@@ -260,17 +294,64 @@ public final class HudService extends Service implements LocationListener {
         }
     }
 
-    private void renderCandidates(Location location) {
-        if (demoMode || store == null) return;
-        List<IntersectionStore.Candidate> candidates = store.findAhead(location, 3);
+    private void renderLiveRows() {
+        if (demoMode) return;
+
+        if (latestLocation == null) {
+            renderWaitingRows();
+            return;
+        }
+
+        if (locationFilter.isHighSpeedRoadMode()) {
+            lights[0].setSignal(TrafficLightView.State.UNKNOWN, "--");
+            names[0].setText("高速／快速道路模式");
+            lights[1].setSignal(TrafficLightView.State.UNKNOWN, "--");
+            names[1].setText("已抑制平面道路號誌");
+            lights[2].setSignal(TrafficLightView.State.UNKNOWN, "--");
+            names[2].setText("等待匝道／降速匹配");
+            return;
+        }
+
+        boolean bearingReady = latestLocation.hasBearing()
+                && (!latestLocation.hasSpeed() || latestLocation.getSpeed() >= 2.0f);
+
         for (int i = 0; i < 3; i++) {
-            lights[i].setSignal(TrafficLightView.State.UNKNOWN, "--");
-            if (i < candidates.size()) {
-                names[i].setText(candidates.get(i).intersection.name);
-            } else {
+            if (i >= latestCandidates.size()) {
+                lights[i].setSignal(TrafficLightView.State.UNKNOWN, "--");
                 names[i].setText(i == 0 ? "未找到前方號誌" : "—");
+                continue;
+            }
+
+            IntersectionStore.Candidate c = latestCandidates.get(i);
+            names[i].setText(c.intersection.name);
+
+            if (!bearingReady) {
+                lights[i].setSignal(TrafficLightView.State.UNKNOWN, "--");
+                continue;
+            }
+
+            SignalPlanStore.Estimate estimate = signalPlanStore.estimate(
+                    c.intersection.id,
+                    latestLocation.getBearing(),
+                    System.currentTimeMillis());
+
+            if (estimate.supported) {
+                lights[i].setSignal(
+                        estimate.state,
+                        Integer.toString(estimate.remainingSeconds));
+            } else {
+                lights[i].setSignal(TrafficLightView.State.UNKNOWN, "--");
             }
         }
+    }
+
+    private void resetDemo() {
+        demoSeconds[0] = 22;
+        demoSeconds[1] = 41;
+        demoSeconds[2] = 3;
+        demoStates[0] = TrafficLightView.State.GREEN;
+        demoStates[1] = TrafficLightView.State.RED;
+        demoStates[2] = TrafficLightView.State.YELLOW;
     }
 
     private void renderDemoRows() {
@@ -282,12 +363,16 @@ public final class HudService extends Service implements LocationListener {
     }
 
     private boolean hasLocationPermission() {
-        return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
     }
 
     @Override
     public void onLocationChanged(Location location) {
-        renderCandidates(location);
+        if (demoMode || location == null) return;
+        if (!LocationManager.GPS_PROVIDER.equals(location.getProvider())) return;
+        Location filtered = locationFilter.add(location);
+        if (filtered != null) updateMatchedLocation(filtered);
     }
 
     @Override public void onProviderEnabled(String provider) {}
@@ -298,6 +383,7 @@ public final class HudService extends Service implements LocationListener {
     public void onDestroy() {
         demoMode = false;
         handler.removeCallbacks(demoTicker);
+        handler.removeCallbacks(liveTicker);
         if (locationManager != null) {
             try { locationManager.removeUpdates(this); } catch (SecurityException ignored) {}
         }
