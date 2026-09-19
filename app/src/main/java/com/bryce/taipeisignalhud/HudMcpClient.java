@@ -2,6 +2,7 @@ package com.bryce.taipeisignalhud;
 
 import android.content.Context;
 import android.location.Location;
+import android.os.SystemClock;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -36,18 +37,21 @@ final class HudMcpClient {
     static final class Snapshot {
         final boolean ok;
         final long serverTimeMs;
+        final long roundTripMs;
         final List<Row> rows;
         final String error;
 
-        Snapshot(boolean ok, long serverTimeMs, List<Row> rows, String error) {
+        Snapshot(boolean ok, long serverTimeMs, long roundTripMs,
+                 List<Row> rows, String error) {
             this.ok = ok;
             this.serverTimeMs = serverTimeMs;
+            this.roundTripMs = roundTripMs;
             this.rows = rows;
             this.error = error;
         }
 
         static Snapshot error(String message) {
-            return new Snapshot(false, 0L, new ArrayList<>(), message);
+            return new Snapshot(false, 0L, 0L, new ArrayList<>(), message);
         }
     }
 
@@ -83,6 +87,7 @@ final class HudMcpClient {
         if (location == null) return Snapshot.error("No location");
 
         HttpURLConnection connection = null;
+        long requestStartElapsedMs = SystemClock.elapsedRealtime();
         try {
             JSONObject args = new JSONObject();
             args.put("latitude", location.getLatitude());
@@ -184,9 +189,12 @@ final class HudMcpClient {
                 }
             }
 
+            long roundTripMs = Math.max(
+                    0L, SystemClock.elapsedRealtime() - requestStartElapsedMs);
             return new Snapshot(
                     true,
                     structured.optLong("server_time_ms", System.currentTimeMillis()),
+                    roundTripMs,
                     rows,
                     "");
         } catch (Exception e) {

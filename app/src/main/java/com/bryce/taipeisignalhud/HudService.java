@@ -77,7 +77,7 @@ public final class HudService extends Service implements LocationListener {
             if (!demoMode) {
                 requestMcpSnapshotIfNeeded();
                 renderLiveRows();
-                handler.postDelayed(this, 500L);
+                handler.postDelayed(this, 250L);
             }
         }
     };
@@ -329,7 +329,7 @@ public final class HudService extends Service implements LocationListener {
         if (locationFilter.isHighSpeedRoadMode()) return;
 
         long nowElapsed = SystemClock.elapsedRealtime();
-        if (mcpRequestInFlight || nowElapsed - lastMcpRequestElapsedMs < 900L) return;
+        if (mcpRequestInFlight || nowElapsed - lastMcpRequestElapsedMs < 450L) return;
 
         final Location requestLocation = new Location(latestLocation);
         final float requestBearing = stableTravelBearingDeg;
@@ -372,7 +372,18 @@ public final class HudService extends Service implements LocationListener {
             if (row.state == TrafficLightView.State.UNKNOWN || row.remainingSeconds < 0) {
                 lights[i].setSignal(TrafficLightView.State.UNKNOWN, "--");
             } else {
-                lights[i].setSignal(row.state, Integer.toString(row.remainingSeconds));
+                // The server's remaining_s is valid at snapshot generation time.
+                // Compensate for half the measured network round-trip plus time spent
+                // locally since receipt, so the displayed countdown does not sit 1–2 s behind.
+                long localAgeMs = Math.max(
+                        0L, SystemClock.elapsedRealtime() - latestMcpReceivedElapsedMs);
+                long estimatedOneWayMs = Math.min(
+                        1500L, Math.max(0L, latestMcpSnapshot.roundTripMs / 2L));
+                int elapsedSeconds = (int) ((localAgeMs + estimatedOneWayMs) / 1000L);
+                int adjustedRemaining = Math.max(
+                        1, row.remainingSeconds - elapsedSeconds);
+                lights[i].setSignal(
+                        row.state, Integer.toString(adjustedRemaining));
             }
         }
     }

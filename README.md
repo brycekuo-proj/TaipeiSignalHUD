@@ -4,7 +4,7 @@ TaipeiSignalHUD 是一個「台北市道路號誌資訊儀表」規劃專案。
 
 目前已進入 **A37 道路測試 APK** 階段：保留既有資料研究與演算法設計，同時加入 Android GPS 前方路口候選與 Overlay 實測。
 
-> v0.0.5-roadtest 在 MCP snapshot 上加入 A37 GPS fix timestamp，讓 Mac 可把 A37 顯示的主要號誌 observation 與 OPPO Logger 的 GPS/速度/方向做時間對齊。MCP 會記錄 `RED_WHILE_MOVING` 校正候選；即使 OPPO 晚幾秒上傳，也會在 location batch 到達時補做比對。3 秒內沒有新 MCP 資料時仍自動退回手機本機時制模型。
+> v0.0.6-roadtest 針對道路實測發現的 1–2 秒顯示延遲，將 MCP 拉取頻率提高到約 0.45 秒、Overlay 刷新提高到 0.25 秒，並依實測 HTTP round-trip time 補償估算單程網路延遲。這只消除傳輸/顯示延遲，不會預先切換號誌相位；若仍有固定偏差，交由 MCP consistency event 做路口 cycle/offset 校正。
 
 ## 產品目標
 
