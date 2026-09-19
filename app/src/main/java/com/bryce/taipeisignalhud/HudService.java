@@ -254,10 +254,33 @@ public final class HudService extends Service implements LocationListener {
                         downY = event.getRawY();
                         return true;
                     case MotionEvent.ACTION_MOVE:
-                        overlayParams.x = Math.max(
-                                0, startX - Math.round(event.getRawX() - downX));
+                        // With TOP|END gravity, a negative X moves the HUD beyond the
+                        // right edge. Allow that movement, but keep a fixed-width strip
+                        // visible so all three stacked signal circles remain touchable.
+                        int peekWidth = dp(68);
+                        int maxHiddenX = Math.max(0, v.getWidth() - peekWidth);
+                        int minX = -maxHiddenX;
+                        int requestedX = startX
+                                - Math.round(event.getRawX() - downX);
+                        overlayParams.x = Math.max(minX, requestedX);
                         overlayParams.y = Math.max(
                                 0, startY + Math.round(event.getRawY() - downY));
+                        try {
+                            windowManager.updateViewLayout(overlayView, overlayParams);
+                        } catch (Exception ignored) {
+                        }
+                        return true;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        // Dock cleanly at the right edge after a deliberate push.
+                        // A small accidental nudge returns to the fully visible HUD.
+                        int dockPeekWidth = dp(68);
+                        int dockHiddenX = Math.max(0, v.getWidth() - dockPeekWidth);
+                        if (overlayParams.x <= -dp(24)) {
+                            overlayParams.x = -dockHiddenX;
+                        } else if (overlayParams.x < 0) {
+                            overlayParams.x = 0;
+                        }
                         try {
                             windowManager.updateViewLayout(overlayView, overlayParams);
                         } catch (Exception ignored) {
