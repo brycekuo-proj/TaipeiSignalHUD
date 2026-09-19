@@ -52,6 +52,7 @@ public final class HudService extends Service implements LocationListener {
     private final RoadLocationFilter locationFilter = new RoadLocationFilter();
     private Location latestLocation;
     private List<IntersectionStore.Candidate> latestCandidates = Collections.emptyList();
+    private Float stableTravelBearingDeg = null;
     private boolean demoMode = false;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -279,11 +280,28 @@ public final class HudService extends Service implements LocationListener {
 
     private void updateMatchedLocation(Location location) {
         latestLocation = location;
+
+        float speed = location.hasSpeed() ? location.getSpeed() : 0f;
+        boolean movingWithReliableBearing = location.hasBearing() && speed >= 2.0f;
+        if (movingWithReliableBearing) {
+            stableTravelBearingDeg = location.getBearing();
+        }
+
         if (locationFilter.isHighSpeedRoadMode()) {
             latestCandidates = Collections.emptyList();
-        } else {
+        } else if (movingWithReliableBearing) {
+            // While moving, continuously refresh the forward corridor and remember it.
             latestCandidates = intersectionStore.findAhead(location, 3);
+        } else if (stableTravelBearingDeg != null && latestCandidates.isEmpty()) {
+            // If the service starts just as the vehicle is slowing/stopped, reuse the
+            // last reliable travel direction to acquire candidates once.
+            Location matchingLocation = new Location(location);
+            matchingLocation.setBearing(stableTravelBearingDeg);
+            matchingLocation.setSpeed(2.1f);
+            latestCandidates = intersectionStore.findAhead(matchingLocation, 3);
         }
+        // When stopped with existing candidates, deliberately keep them frozen.
+        // GPS course becomes noisy near 0 km/h, but the signal phase must keep counting.
         renderLiveRows();
     }
 
@@ -312,8 +330,7 @@ public final class HudService extends Service implements LocationListener {
             return;
         }
 
-        boolean bearingReady = latestLocation.hasBearing()
-                && (!latestLocation.hasSpeed() || latestLocation.getSpeed() >= 2.0f);
+        boolean bearingReady = stableTravelBearingDeg != null;
 
         for (int i = 0; i < 3; i++) {
             if (i >= latestCandidates.size()) {
@@ -332,7 +349,7 @@ public final class HudService extends Service implements LocationListener {
 
             SignalPlanStore.Estimate estimate = signalPlanStore.estimate(
                     c.intersection.id,
-                    latestLocation.getBearing(),
+                    stableTravelBearingDeg,
                     System.currentTimeMillis());
 
             if (estimate.supported) {
