@@ -24,13 +24,24 @@ final class HudMcpClient {
         final String name;
         final TrafficLightView.State state;
         final int remainingSeconds;
+        final String coverageGrade;
+        final String region;
+        final String coverageSource;
 
         Row(String intersectionId, String name,
-            TrafficLightView.State state, int remainingSeconds) {
+            TrafficLightView.State state, int remainingSeconds,
+            String coverageGrade, String region, String coverageSource) {
             this.intersectionId = intersectionId;
             this.name = name;
             this.state = state;
             this.remainingSeconds = remainingSeconds;
+            this.coverageGrade = coverageGrade == null ? "" : coverageGrade;
+            this.region = region == null ? "" : region;
+            this.coverageSource = coverageSource == null ? "" : coverageSource;
+        }
+
+        boolean isCoverageOnly() {
+            return "C".equalsIgnoreCase(coverageGrade);
         }
     }
 
@@ -185,7 +196,10 @@ final class HudMcpClient {
                             item.optString("intersection_id", ""),
                             item.optString("name", "—"),
                             state,
-                            remaining));
+                            remaining,
+                            item.optString("coverage_grade", ""),
+                            item.optString("region", ""),
+                            item.optString("coverage_source", "")));
                 }
             }
 

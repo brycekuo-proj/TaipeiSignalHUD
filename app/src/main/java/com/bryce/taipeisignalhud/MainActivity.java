@@ -42,7 +42,7 @@ public final class MainActivity extends Activity {
         TextView title = text("TaipeiSignalHUD", 27, true);
         root.addView(title);
 
-        TextView subtitle = text("A37 Road Test · v0.0.13", 14, false);
+        TextView subtitle = text("A37 Road Test · v0.0.14", 14, false);
         subtitle.setTextColor(Color.DKGRAY);
         root.addView(subtitle);
 
@@ -82,6 +82,8 @@ public final class MainActivity extends Activity {
                 "• MCP 逾時會自動退回本機算法。\n" +
                 "• 新生高架已接 MCP 匝道模式：高速/高架時仍詢問 MCP，優先顯示下一出口端號誌。\n" +
                 "• 其他高速/快速道路若 MCP 尚無匝道拓撲，才抑制平面道路號誌。\n" +
+                "• 新北／基隆已加入 C 級號誌骨架：只辨識前方號誌／路口位置，固定顯示「--」，不猜燈色與秒數。\n" +
+                "• C 級骨架目前由 OSM 號誌節點聚合建立；資料 © OpenStreetMap contributors, ODbL 1.0。\n" +
                 "• 複雜或無法可靠解析的時相仍顯示灰色「--」。\n" +
                 "• DEMO 只檢查顯示效果。\n\n" +
                 "道路測試時以現場交通號誌為準。",

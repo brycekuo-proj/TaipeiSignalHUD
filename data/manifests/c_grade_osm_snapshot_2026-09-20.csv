@@ -1,0 +1,3 @@
+region,osm_relation_id,overpass_area_id,osm_base_timestamp,raw_signal_nodes,c_anchors,source,license
+NTPC,1527220,3601527220,2026-09-19T20:22:34Z,4632,2545,OpenStreetMap/Overpass,ODbL-1.0
+KLC,1296154,3601296154,2026-09-19T20:22:34Z,457,265,OpenStreetMap/Overpass,ODbL-1.0

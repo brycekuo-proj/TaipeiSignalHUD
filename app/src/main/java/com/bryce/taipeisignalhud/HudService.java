@@ -448,7 +448,11 @@ public final class HudService extends Service implements LocationListener {
             }
             HudMcpClient.Row row = rows.get(i);
             names[i].setText(formatIntersectionName(row.name));
-            if (row.state == TrafficLightView.State.UNKNOWN || row.remainingSeconds < 0) {
+            if (row.isCoverageOnly()
+                    || row.state == TrafficLightView.State.UNKNOWN
+                    || row.remainingSeconds < 0) {
+                // Grade C is presence/geometry only. It must never emit a color
+                // or countdown until explicitly promoted to a timed grade.
                 lights[i].setSignal(TrafficLightView.State.UNKNOWN, "--");
             } else {
                 // The server's remaining_s is valid at snapshot generation time.
@@ -502,7 +506,9 @@ public final class HudService extends Service implements LocationListener {
             IntersectionStore.Candidate c = latestCandidates.get(i);
             names[i].setText(formatIntersectionName(c.intersection.name));
 
-            if (!bearingReady) {
+            if (c.intersection.isCoverageOnly() || !bearingReady) {
+                // C-grade New Taipei / Keelung anchors intentionally stop here:
+                // locate the next signal, but do not infer state or seconds.
                 lights[i].setSignal(TrafficLightView.State.UNKNOWN, "--");
                 continue;
             }

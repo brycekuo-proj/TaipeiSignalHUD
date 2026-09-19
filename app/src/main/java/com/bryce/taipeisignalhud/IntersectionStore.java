@@ -20,12 +20,23 @@ public final class IntersectionStore {
         public final String name;
         public final double longitude;
         public final double latitude;
+        public final String region;
+        public final String coverageGrade;
+        public final String source;
 
-        Intersection(String id, String name, double longitude, double latitude) {
+        Intersection(String id, String name, double longitude, double latitude,
+                     String region, String coverageGrade, String source) {
             this.id = id;
             this.name = name;
             this.longitude = longitude;
             this.latitude = latitude;
+            this.region = region == null ? "" : region;
+            this.coverageGrade = coverageGrade == null ? "" : coverageGrade;
+            this.source = source == null ? "" : source;
+        }
+
+        public boolean isCoverageOnly() {
+            return "C".equalsIgnoreCase(coverageGrade);
         }
     }
 
@@ -49,7 +60,8 @@ public final class IntersectionStore {
     private final List<Intersection> intersections = new ArrayList<>();
 
     public IntersectionStore(Context context) {
-        load(context);
+        load(context, "intersections.psv", "TPE", "TIMED", "TPE_OFFICIAL");
+        load(context, "intersections_c.psv", "", "C", "OSM");
     }
 
     public int size() {
@@ -109,7 +121,12 @@ public final class IntersectionStore {
         ArrayList<Candidate> deduped = new ArrayList<>();
         Set<String> seenNames = new HashSet<>();
         for (Candidate c : result) {
-            String key = normalizeName(c.intersection.name);
+            // Taipei's official rows can still be de-duplicated by display name.
+            // C-grade OSM rows are separate physical coverage anchors; two
+            // consecutive signals on the same road may intentionally share a name.
+            String key = c.intersection.isCoverageOnly()
+                    ? c.intersection.id
+                    : normalizeName(c.intersection.name);
             if (!seenNames.add(key)) continue;
             deduped.add(c);
             if (deduped.size() >= limit) break;
@@ -117,9 +134,10 @@ public final class IntersectionStore {
         return deduped;
     }
 
-    private void load(Context context) {
+    private void load(Context context, String assetName,
+                      String defaultRegion, String defaultGrade, String defaultSource) {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-                context.getAssets().open("intersections.psv"), StandardCharsets.UTF_8))) {
+                context.getAssets().open(assetName), StandardCharsets.UTF_8))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 if (line.isEmpty() || line.startsWith("#")) continue;
@@ -130,8 +148,15 @@ public final class IntersectionStore {
                     String name = cleanupDisplayName(p[1]);
                     double lon = Double.parseDouble(p[2]);
                     double lat = Double.parseDouble(p[3]);
+                    String region = p.length > 4 && !p[4].trim().isEmpty()
+                            ? p[4].trim() : defaultRegion;
+                    String grade = p.length > 5 && !p[5].trim().isEmpty()
+                            ? p[5].trim() : defaultGrade;
+                    String source = p.length > 6 && !p[6].trim().isEmpty()
+                            ? p[6].trim() : defaultSource;
                     if (name.isEmpty()) name = id;
-                    intersections.add(new Intersection(id, name, lon, lat));
+                    intersections.add(new Intersection(
+                            id, name, lon, lat, region, grade, source));
                 } catch (NumberFormatException ignored) {
                 }
             }
