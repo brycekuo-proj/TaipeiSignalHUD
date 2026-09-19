@@ -1,0 +1,324 @@
+package com.bryce.taipeisignalhud;
+
+import android.Manifest;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.Service;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.graphics.PixelFormat;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.IBinder;
+import android.os.Looper;
+import android.provider.Settings;
+import android.text.TextUtils;
+import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.WindowManager;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+
+import java.util.List;
+
+public final class HudService extends Service implements LocationListener {
+    public static final String ACTION_START = "com.bryce.taipeisignalhud.START";
+    public static final String ACTION_STOP = "com.bryce.taipeisignalhud.STOP";
+    public static final String ACTION_DEMO = "com.bryce.taipeisignalhud.DEMO";
+
+    private static final String CHANNEL_ID = "road_test";
+    private static final int NOTIFICATION_ID = 1401;
+
+    private WindowManager windowManager;
+    private WindowManager.LayoutParams overlayParams;
+    private View overlayView;
+    private final TrafficLightView[] lights = new TrafficLightView[3];
+    private final TextView[] names = new TextView[3];
+    private LocationManager locationManager;
+    private IntersectionStore store;
+    private boolean demoMode = false;
+
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final int[] demoSeconds = new int[]{22, 41, 3};
+    private final TrafficLightView.State[] demoStates = new TrafficLightView.State[]{
+            TrafficLightView.State.GREEN,
+            TrafficLightView.State.RED,
+            TrafficLightView.State.YELLOW
+    };
+
+    private final Runnable demoTicker = new Runnable() {
+        @Override public void run() {
+            if (!demoMode) return;
+            for (int i = 0; i < demoSeconds.length; i++) {
+                demoSeconds[i]--;
+                if (demoSeconds[i] <= 0) {
+                    if (demoStates[i] == TrafficLightView.State.GREEN) {
+                        demoStates[i] = TrafficLightView.State.YELLOW;
+                        demoSeconds[i] = 3;
+                    } else if (demoStates[i] == TrafficLightView.State.YELLOW) {
+                        demoStates[i] = TrafficLightView.State.RED;
+                        demoSeconds[i] = 24;
+                    } else {
+                        demoStates[i] = TrafficLightView.State.GREEN;
+                        demoSeconds[i] = 18;
+                    }
+                }
+            }
+            renderDemoRows();
+            handler.postDelayed(this, 1000L);
+        }
+    };
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+        locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
+        store = new IntersectionStore(this);
+        createChannel();
+    }
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        String action = intent == null ? ACTION_START : intent.getAction();
+        if (ACTION_STOP.equals(action)) {
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+
+        if (!hasLocationPermission() || (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this))) {
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+
+        startForeground(NOTIFICATION_ID, buildNotification());
+        showOverlayIfNeeded();
+        startLocationUpdates();
+
+        demoMode = ACTION_DEMO.equals(action);
+        handler.removeCallbacks(demoTicker);
+        if (demoMode) {
+            demoSeconds[0] = 22;
+            demoSeconds[1] = 41;
+            demoSeconds[2] = 3;
+            demoStates[0] = TrafficLightView.State.GREEN;
+            demoStates[1] = TrafficLightView.State.RED;
+            demoStates[2] = TrafficLightView.State.YELLOW;
+            renderDemoRows();
+            handler.postDelayed(demoTicker, 1000L);
+        } else {
+            renderWaitingRows();
+        }
+        return START_STICKY;
+    }
+
+    private Notification buildNotification() {
+        Intent open = new Intent(this, MainActivity.class);
+        PendingIntent pi = PendingIntent.getActivity(
+                this, 0, open,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        Notification.Builder b = Build.VERSION.SDK_INT >= 26
+                ? new Notification.Builder(this, CHANNEL_ID)
+                : new Notification.Builder(this);
+        return b.setSmallIcon(android.R.drawable.ic_menu_mylocation)
+                .setContentTitle("TaipeiSignalHUD 道路測試")
+                .setContentText("前方路口 Overlay 與 GPS 正在運作")
+                .setOngoing(true)
+                .setContentIntent(pi)
+                .build();
+    }
+
+    private void createChannel() {
+        if (Build.VERSION.SDK_INT < 26) return;
+        NotificationChannel c = new NotificationChannel(
+                CHANNEL_ID, "Road test", NotificationManager.IMPORTANCE_LOW);
+        c.setDescription("TaipeiSignalHUD road-test foreground location service");
+        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        nm.createNotificationChannel(c);
+    }
+
+    private void showOverlayIfNeeded() {
+        if (overlayView != null) return;
+
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(10), dp(8), dp(12), dp(8));
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.argb(205, 14, 17, 22));
+        bg.setCornerRadius(dp(14));
+        bg.setStroke(dp(1), Color.argb(80, 255, 255, 255));
+        root.setBackground(bg);
+
+        for (int i = 0; i < 3; i++) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+
+            TrafficLightView light = new TrafficLightView(this);
+            lights[i] = light;
+            LinearLayout.LayoutParams lpLight = new LinearLayout.LayoutParams(dp(48), dp(48));
+            lpLight.setMargins(0, i == 0 ? 0 : dp(4), dp(9), 0);
+            row.addView(light, lpLight);
+
+            TextView name = new TextView(this);
+            names[i] = name;
+            name.setTextColor(Color.WHITE);
+            name.setTextSize(16);
+            name.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
+            name.setSingleLine(true);
+            name.setEllipsize(TextUtils.TruncateAt.END);
+            name.setMaxWidth(dp(210));
+            name.setMinWidth(dp(120));
+            row.addView(name, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT));
+
+            root.addView(row);
+        }
+
+        int type = Build.VERSION.SDK_INT >= 26
+                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                : WindowManager.LayoutParams.TYPE_PHONE;
+
+        overlayParams = new WindowManager.LayoutParams(
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                type,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT);
+        overlayParams.gravity = Gravity.TOP | Gravity.END;
+        overlayParams.x = dp(10);
+        overlayParams.y = dp(110);
+
+        attachDrag(root);
+        windowManager.addView(root, overlayParams);
+        overlayView = root;
+    }
+
+    private void attachDrag(View view) {
+        view.setOnTouchListener(new View.OnTouchListener() {
+            private int startX;
+            private int startY;
+            private float downX;
+            private float downY;
+
+            @Override public boolean onTouch(View v, MotionEvent event) {
+                if (overlayParams == null) return false;
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        startX = overlayParams.x;
+                        startY = overlayParams.y;
+                        downX = event.getRawX();
+                        downY = event.getRawY();
+                        return true;
+                    case MotionEvent.ACTION_MOVE:
+                        overlayParams.x = Math.max(0, startX - Math.round(event.getRawX() - downX));
+                        overlayParams.y = Math.max(0, startY + Math.round(event.getRawY() - downY));
+                        try {
+                            windowManager.updateViewLayout(overlayView, overlayParams);
+                        } catch (Exception ignored) {
+                        }
+                        return true;
+                    default:
+                        return true;
+                }
+            }
+        });
+    }
+
+    private void startLocationUpdates() {
+        if (!hasLocationPermission()) return;
+        try {
+            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 800L, 2f, this);
+            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 1500L, 5f, this);
+            }
+            Location last = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+            if (last != null && !demoMode) renderCandidates(last);
+        } catch (SecurityException ignored) {
+        }
+    }
+
+    private void renderWaitingRows() {
+        for (int i = 0; i < 3; i++) {
+            lights[i].setSignal(TrafficLightView.State.UNKNOWN, "--");
+            names[i].setText(i == 0 ? "等待 GPS / 行進方向" : "—");
+        }
+    }
+
+    private void renderCandidates(Location location) {
+        if (demoMode || store == null) return;
+        List<IntersectionStore.Candidate> candidates = store.findAhead(location, 3);
+        for (int i = 0; i < 3; i++) {
+            lights[i].setSignal(TrafficLightView.State.UNKNOWN, "--");
+            if (i < candidates.size()) {
+                names[i].setText(candidates.get(i).intersection.name);
+            } else {
+                names[i].setText(i == 0 ? "未找到前方號誌" : "—");
+            }
+        }
+    }
+
+    private void renderDemoRows() {
+        String[] demoNames = new String[]{"仁愛路口", "信義路口", "和平東路口"};
+        for (int i = 0; i < 3; i++) {
+            lights[i].setSignal(demoStates[i], Integer.toString(demoSeconds[i]));
+            names[i].setText(demoNames[i]);
+        }
+    }
+
+    private boolean hasLocationPermission() {
+        return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    @Override
+    public void onLocationChanged(Location location) {
+        renderCandidates(location);
+    }
+
+    @Override public void onProviderEnabled(String provider) {}
+    @Override public void onProviderDisabled(String provider) {}
+    @Override public void onStatusChanged(String provider, int status, Bundle extras) {}
+
+    @Override
+    public void onDestroy() {
+        demoMode = false;
+        handler.removeCallbacks(demoTicker);
+        if (locationManager != null) {
+            try { locationManager.removeUpdates(this); } catch (SecurityException ignored) {}
+        }
+        if (overlayView != null) {
+            try { windowManager.removeView(overlayView); } catch (Exception ignored) {}
+            overlayView = null;
+        }
+        if (Build.VERSION.SDK_INT >= 24) {
+            stopForeground(STOP_FOREGROUND_REMOVE);
+        } else {
+            stopForeground(true);
+        }
+        super.onDestroy();
+    }
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+}

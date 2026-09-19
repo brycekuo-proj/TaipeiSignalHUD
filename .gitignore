@@ -5,3 +5,8 @@ data/raw/
 .DS_Store
 *.tmp
 research/local/
+
+# Android local/build state
+.gradle/
+local.properties
+**/build/
