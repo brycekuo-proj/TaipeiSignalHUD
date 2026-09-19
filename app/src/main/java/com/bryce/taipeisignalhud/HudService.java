@@ -296,8 +296,19 @@ public final class HudService extends Service implements LocationListener {
 
         float speed = location.hasSpeed() ? location.getSpeed() : 0f;
         boolean movingWithReliableBearing = location.hasBearing() && speed >= 2.0f;
+        Float previousStableBearingDeg = stableTravelBearingDeg;
         if (movingWithReliableBearing) {
             stableTravelBearingDeg = location.getBearing();
+
+            // A real turn means the old MCP snapshot may describe the road we just left.
+            // Drop it immediately instead of showing stale forward-road/signal rows for
+            // another 1–3 seconds while the next network response is in flight.
+            if (previousStableBearingDeg != null
+                    && angleDeltaAbs(previousStableBearingDeg, stableTravelBearingDeg) >= 30f) {
+                latestMcpSnapshot = null;
+                latestMcpReceivedElapsedMs = 0L;
+                lastMcpRequestElapsedMs = 0L;
+            }
         }
 
         if (locationFilter.isHighSpeedRoadMode()) {
@@ -479,6 +490,11 @@ public final class HudService extends Service implements LocationListener {
                     + text.substring(firstSpace + 1).trim();
         }
         return text;
+    }
+
+    private static float angleDeltaAbs(float a, float b) {
+        float delta = (b - a + 540f) % 360f - 180f;
+        return Math.abs(delta);
     }
 
     private boolean hasLocationPermission() {
