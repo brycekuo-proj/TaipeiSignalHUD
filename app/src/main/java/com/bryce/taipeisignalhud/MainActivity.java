@@ -42,7 +42,7 @@ public final class MainActivity extends Activity {
         TextView title = text("TaipeiSignalHUD", 27, true);
         root.addView(title);
 
-        TextView subtitle = text("A37 Road Test · v0.0.7", 14, false);
+        TextView subtitle = text("A37 Road Test · v0.0.8", 14, false);
         subtitle.setTextColor(Color.DKGRAY);
         root.addView(subtitle);
 

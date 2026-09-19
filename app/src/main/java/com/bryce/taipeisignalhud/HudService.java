@@ -204,8 +204,10 @@ public final class HudService extends Service implements LocationListener {
             name.setTextColor(Color.WHITE);
             name.setTextSize(16);
             name.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
-            name.setSingleLine(true);
+            name.setSingleLine(false);
+            name.setMaxLines(2);
             name.setEllipsize(TextUtils.TruncateAt.END);
+            name.setLineSpacing(0f, 0.96f);
             name.setMaxWidth(dp(230));
             name.setMinWidth(dp(120));
             row.addView(name, new LinearLayout.LayoutParams(
@@ -366,7 +368,7 @@ public final class HudService extends Service implements LocationListener {
                 continue;
             }
             HudMcpClient.Row row = rows.get(i);
-            names[i].setText(row.name);
+            names[i].setText(formatIntersectionName(row.name));
             if (row.state == TrafficLightView.State.UNKNOWN || row.remainingSeconds < 0) {
                 lights[i].setSignal(TrafficLightView.State.UNKNOWN, "--");
             } else {
@@ -419,7 +421,7 @@ public final class HudService extends Service implements LocationListener {
             }
 
             IntersectionStore.Candidate c = latestCandidates.get(i);
-            names[i].setText(c.intersection.name);
+            names[i].setText(formatIntersectionName(c.intersection.name));
 
             if (!bearingReady) {
                 lights[i].setSignal(TrafficLightView.State.UNKNOWN, "--");
@@ -456,6 +458,27 @@ public final class HudService extends Service implements LocationListener {
             lights[i].setSignal(demoStates[i], Integer.toString(demoSeconds[i]));
             names[i].setText(demoNames[i]);
         }
+    }
+
+    private String formatIntersectionName(String raw) {
+        if (raw == null) return "—";
+        String text = raw.replace('\u3000', ' ').trim().replaceAll("\\s+", " ");
+        if (text.isEmpty()) return "—";
+
+        int elevatedSeparator = text.indexOf('・');
+        if (elevatedSeparator > 0 && elevatedSeparator < text.length() - 1) {
+            return text.substring(0, elevatedSeparator).trim()
+                    + "\n"
+                    + text.substring(elevatedSeparator + 1).trim();
+        }
+
+        int firstSpace = text.indexOf(' ');
+        if (firstSpace > 0 && firstSpace < text.length() - 1) {
+            return text.substring(0, firstSpace).trim()
+                    + "\n"
+                    + text.substring(firstSpace + 1).trim();
+        }
+        return text;
     }
 
     private boolean hasLocationPermission() {
