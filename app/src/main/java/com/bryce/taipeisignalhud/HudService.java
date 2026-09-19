@@ -63,6 +63,7 @@ public final class HudService extends Service implements LocationListener {
     private long lastMcpRequestElapsedMs = 0L;
     private volatile boolean mcpRequestInFlight = false;
     private boolean demoMode = false;
+    private boolean overlayDocked = false;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final int[] demoSeconds = new int[]{22, 41, 3};
@@ -228,13 +229,26 @@ public final class HudService extends Service implements LocationListener {
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                         | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT);
-        overlayParams.gravity = Gravity.TOP | Gravity.END;
+        // Use START gravity so x is an absolute left-edge coordinate. This makes
+        // partial off-screen docking reliable across Android vendors.
+        overlayParams.gravity = Gravity.TOP | Gravity.START;
         overlayParams.x = dp(10);
         overlayParams.y = dp(110);
 
         attachDrag(root);
         windowManager.addView(root, overlayParams);
         overlayView = root;
+
+        root.post(() -> {
+            if (overlayParams == null || overlayView == null) return;
+            int screenWidth = getResources().getDisplayMetrics().widthPixels;
+            int normalX = Math.max(0, screenWidth - root.getWidth() - dp(10));
+            overlayParams.x = normalX;
+            try {
+                windowManager.updateViewLayout(overlayView, overlayParams);
+            } catch (Exception ignored) {
+            }
+        });
     }
 
     private void attachDrag(View view) {
@@ -246,6 +260,11 @@ public final class HudService extends Service implements LocationListener {
 
             @Override public boolean onTouch(View v, MotionEvent event) {
                 if (overlayParams == null) return false;
+                int screenWidth = getResources().getDisplayMetrics().widthPixels;
+                int peekWidth = dp(68);
+                int dockX = Math.max(0, screenWidth - peekWidth);
+                int normalX = Math.max(0, screenWidth - v.getWidth() - dp(10));
+
                 switch (event.getActionMasked()) {
                     case MotionEvent.ACTION_DOWN:
                         startX = overlayParams.x;
@@ -254,15 +273,9 @@ public final class HudService extends Service implements LocationListener {
                         downY = event.getRawY();
                         return true;
                     case MotionEvent.ACTION_MOVE:
-                        // With TOP|END gravity, a negative X moves the HUD beyond the
-                        // right edge. Allow that movement, but keep a fixed-width strip
-                        // visible so all three stacked signal circles remain touchable.
-                        int peekWidth = dp(68);
-                        int maxHiddenX = Math.max(0, v.getWidth() - peekWidth);
-                        int minX = -maxHiddenX;
                         int requestedX = startX
-                                - Math.round(event.getRawX() - downX);
-                        overlayParams.x = Math.max(minX, requestedX);
+                                + Math.round(event.getRawX() - downX);
+                        overlayParams.x = Math.max(0, Math.min(dockX, requestedX));
                         overlayParams.y = Math.max(
                                 0, startY + Math.round(event.getRawY() - downY));
                         try {
@@ -272,14 +285,15 @@ public final class HudService extends Service implements LocationListener {
                         return true;
                     case MotionEvent.ACTION_UP:
                     case MotionEvent.ACTION_CANCEL:
-                        // Dock cleanly at the right edge after a deliberate push.
-                        // A small accidental nudge returns to the fully visible HUD.
-                        int dockPeekWidth = dp(68);
-                        int dockHiddenX = Math.max(0, v.getWidth() - dockPeekWidth);
-                        if (overlayParams.x <= -dp(24)) {
-                            overlayParams.x = -dockHiddenX;
-                        } else if (overlayParams.x < 0) {
-                            overlayParams.x = 0;
+                        float dx = event.getRawX() - downX;
+                        if (dx >= dp(24) || overlayParams.x >= dockX - dp(16)) {
+                            overlayDocked = true;
+                            overlayParams.x = dockX;
+                        } else if (dx <= -dp(24)) {
+                            overlayDocked = false;
+                            overlayParams.x = normalX;
+                        } else {
+                            overlayParams.x = overlayDocked ? dockX : normalX;
                         }
                         try {
                             windowManager.updateViewLayout(overlayView, overlayParams);
