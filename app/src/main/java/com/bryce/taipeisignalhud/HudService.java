@@ -46,6 +46,7 @@ public final class HudService extends Service implements LocationListener {
     private WindowManager windowManager;
     private WindowManager.LayoutParams overlayParams;
     private View overlayView;
+    private LinearLayout overlayRoot;
     private final TrafficLightView[] lights = new TrafficLightView[3];
     private final TextView[] names = new TextView[3];
 
@@ -180,14 +181,10 @@ public final class HudService extends Service implements LocationListener {
         if (overlayView != null) return;
 
         LinearLayout root = new LinearLayout(this);
+        overlayRoot = root;
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(10), dp(8), dp(12), dp(8));
-
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.argb(205, 14, 17, 22));
-        bg.setCornerRadius(dp(14));
-        bg.setStroke(dp(1), Color.argb(80, 255, 255, 255));
-        root.setBackground(bg);
+        root.setBackground(buildOverlayBackground());
 
         for (int i = 0; i < 3; i++) {
             LinearLayout row = new LinearLayout(this);
@@ -227,7 +224,8 @@ public final class HudService extends Service implements LocationListener {
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 type,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT);
         // Use START gravity so x is an absolute left-edge coordinate. This makes
         // partial off-screen docking reliable across Android vendors.
@@ -261,9 +259,6 @@ public final class HudService extends Service implements LocationListener {
             @Override public boolean onTouch(View v, MotionEvent event) {
                 if (overlayParams == null) return false;
                 int screenWidth = getResources().getDisplayMetrics().widthPixels;
-                int peekWidth = dp(68);
-                int dockX = Math.max(0, screenWidth - peekWidth);
-                int normalX = Math.max(0, screenWidth - v.getWidth() - dp(10));
 
                 switch (event.getActionMasked()) {
                     case MotionEvent.ACTION_DOWN:
@@ -275,7 +270,8 @@ public final class HudService extends Service implements LocationListener {
                     case MotionEvent.ACTION_MOVE:
                         int requestedX = startX
                                 + Math.round(event.getRawX() - downX);
-                        overlayParams.x = Math.max(0, Math.min(dockX, requestedX));
+                        overlayParams.x = Math.max(
+                                0, Math.min(screenWidth - dp(24), requestedX));
                         overlayParams.y = Math.max(
                                 0, startY + Math.round(event.getRawY() - downY));
                         try {
@@ -286,18 +282,12 @@ public final class HudService extends Service implements LocationListener {
                     case MotionEvent.ACTION_UP:
                     case MotionEvent.ACTION_CANCEL:
                         float dx = event.getRawX() - downX;
-                        if (dx >= dp(24) || overlayParams.x >= dockX - dp(16)) {
-                            overlayDocked = true;
-                            overlayParams.x = dockX;
+                        if (dx >= dp(24)) {
+                            setOverlayCompact(true);
                         } else if (dx <= -dp(24)) {
-                            overlayDocked = false;
-                            overlayParams.x = normalX;
+                            setOverlayCompact(false);
                         } else {
-                            overlayParams.x = overlayDocked ? dockX : normalX;
-                        }
-                        try {
-                            windowManager.updateViewLayout(overlayView, overlayParams);
-                        } catch (Exception ignored) {
+                            snapOverlayToRightEdge();
                         }
                         return true;
                     default:
@@ -305,6 +295,47 @@ public final class HudService extends Service implements LocationListener {
                 }
             }
         });
+    }
+
+    private void setOverlayCompact(boolean compact) {
+        overlayDocked = compact;
+        if (overlayRoot == null) return;
+
+        for (TextView name : names) {
+            if (name != null) {
+                name.setVisibility(compact ? View.GONE : View.VISIBLE);
+            }
+        }
+
+        if (compact) {
+            overlayRoot.setPadding(0, 0, 0, 0);
+            overlayRoot.setBackground(null);
+        } else {
+            overlayRoot.setPadding(dp(10), dp(8), dp(12), dp(8));
+            overlayRoot.setBackground(buildOverlayBackground());
+        }
+
+        overlayRoot.requestLayout();
+        overlayRoot.post(this::snapOverlayToRightEdge);
+    }
+
+    private void snapOverlayToRightEdge() {
+        if (overlayParams == null || overlayView == null) return;
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        int margin = overlayDocked ? dp(2) : dp(10);
+        overlayParams.x = Math.max(0, screenWidth - overlayView.getWidth() - margin);
+        try {
+            windowManager.updateViewLayout(overlayView, overlayParams);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private GradientDrawable buildOverlayBackground() {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.argb(205, 14, 17, 22));
+        bg.setCornerRadius(dp(14));
+        bg.setStroke(dp(1), Color.argb(80, 255, 255, 255));
+        return bg;
     }
 
     private void startLocationUpdates() {
