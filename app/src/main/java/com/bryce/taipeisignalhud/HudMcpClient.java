@@ -90,6 +90,9 @@ final class HudMcpClient {
             args.put("bearing_deg", stableBearingDeg);
             args.put("speed_mps", location.hasSpeed() ? location.getSpeed() : 0.0);
             args.put("accuracy_m", location.hasAccuracy() ? location.getAccuracy() : 20.0);
+            args.put("fix_utc_ms", location.getTime() > 0L
+                    ? location.getTime() : System.currentTimeMillis());
+            args.put("request_utc_ms", System.currentTimeMillis());
             args.put("limit", 3);
             JSONArray preferred = new JSONArray();
             if (candidates != null) {
