@@ -51,6 +51,7 @@ public final class HudService extends Service implements LocationListener {
     private LinearLayout overlayRoot;
     private TextView enforcementBanner;
     private TextView speedBanner;
+    private TextView closeButton;
     private final TrafficLightView[] lights = new TrafficLightView[3];
     private final TextView[] names = new TextView[3];
 
@@ -213,6 +214,31 @@ public final class HudService extends Service implements LocationListener {
         root.setPadding(dp(10), dp(8), dp(12), dp(8));
         root.setBackground(buildOverlayBackground());
 
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
+        TextView spacer = new TextView(this);
+        header.addView(spacer, new LinearLayout.LayoutParams(
+                0, dp(36), 1f));
+
+        TextView close = new TextView(this);
+        closeButton = close;
+        close.setText("×");
+        close.setTextColor(Color.WHITE);
+        close.setTextSize(22);
+        close.setGravity(Gravity.CENTER);
+        close.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
+        close.setContentDescription("關閉 Overlay");
+        close.setClickable(true);
+        close.setFocusable(true);
+        close.setPadding(dp(8), 0, dp(8), dp(2));
+        close.setBackground(buildCloseButtonBackground());
+        close.setOnClickListener(v -> closeOverlay());
+        header.addView(close, new LinearLayout.LayoutParams(dp(36), dp(36)));
+        root.addView(header, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
         TextView banner = new TextView(this);
         enforcementBanner = banner;
         banner.setTextColor(Color.WHITE);
@@ -367,6 +393,11 @@ public final class HudService extends Service implements LocationListener {
                 name.setVisibility(compact ? View.GONE : View.VISIBLE);
             }
         }
+        if (closeButton != null) {
+            closeButton.setVisibility(compact ? View.GONE : View.VISIBLE);
+            View parent = (View) closeButton.getParent();
+            if (parent != null) parent.setVisibility(compact ? View.GONE : View.VISIBLE);
+        }
 
         if (compact) {
             overlayRoot.setPadding(0, 0, 0, 0);
@@ -397,6 +428,27 @@ public final class HudService extends Service implements LocationListener {
         bg.setCornerRadius(dp(14));
         bg.setStroke(dp(1), Color.argb(80, 255, 255, 255));
         return bg;
+    }
+
+    private GradientDrawable buildCloseButtonBackground() {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.OVAL);
+        bg.setColor(Color.argb(120, 20, 20, 20));
+        bg.setStroke(dp(1), Color.argb(90, 255, 255, 255));
+        return bg;
+    }
+
+    private void closeOverlay() {
+        if (overlayView != null && windowManager != null) {
+            try {
+                windowManager.removeView(overlayView);
+            } catch (Exception ignored) {
+            }
+            overlayView = null;
+            overlayRoot = null;
+            overlayParams = null;
+        }
+        stopSelf();
     }
 
     private GradientDrawable buildEnforcementBackground() {
