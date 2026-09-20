@@ -57,8 +57,10 @@ public final class EnforcementStore {
     }
 
     private final List<Point> points;
+    private final Context context;
 
     public EnforcementStore(Context context) {
+        this.context = context.getApplicationContext();
         points = Collections.unmodifiableList(load(context));
     }
 
@@ -69,8 +71,7 @@ public final class EnforcementStore {
     public Match findApproaching(Location location, Float travelBearingDeg) {
         if (location == null || travelBearingDeg == null) return null;
 
-        float speedMps = location.hasSpeed() ? Math.max(0f, location.getSpeed()) : 0f;
-        float warningDistance = clamp(420f + speedMps * 11f, 420f, 900f);
+        float warningDistance = UserSettings.enforcementDistanceM(context);
         Point best = null;
         float bestDistance = Float.MAX_VALUE;
         float[] result = new float[3];

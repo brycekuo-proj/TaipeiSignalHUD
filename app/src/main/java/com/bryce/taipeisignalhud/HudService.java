@@ -50,6 +50,7 @@ public final class HudService extends Service implements LocationListener {
     private View overlayView;
     private LinearLayout overlayRoot;
     private TextView enforcementBanner;
+    private TextView speedBanner;
     private final TrafficLightView[] lights = new TrafficLightView[3];
     private final TextView[] names = new TextView[3];
 
@@ -66,6 +67,8 @@ public final class HudService extends Service implements LocationListener {
     private int activeEnforcementVoiceStage = 0;
     private String lastSpokenEnforcementId = null;
     private long lastSpokenEnforcementElapsedMs = 0L;
+    private boolean speedAlertActive = false;
+    private long lastSpeedAlertSpokenElapsedMs = 0L;
     private final RoadLocationFilter locationFilter = new RoadLocationFilter();
     private final ExecutorService mcpExecutor = Executors.newSingleThreadExecutor();
     private Location latestLocation;
@@ -89,6 +92,7 @@ public final class HudService extends Service implements LocationListener {
     private final Runnable liveTicker = new Runnable() {
         @Override public void run() {
             if (!demoMode) {
+                applyOverlayOpacity();
                 requestMcpSnapshotIfNeeded();
                 renderLiveRows();
                 handler.postDelayed(this, 250L);
@@ -99,6 +103,7 @@ public final class HudService extends Service implements LocationListener {
     private final Runnable demoTicker = new Runnable() {
         @Override public void run() {
             if (!demoMode) return;
+            applyOverlayOpacity();
             for (int i = 0; i < demoSeconds.length; i++) {
                 demoSeconds[i]--;
                 if (demoSeconds[i] <= 0) {
@@ -161,6 +166,7 @@ public final class HudService extends Service implements LocationListener {
 
         if (demoMode) {
             hideEnforcementBanner();
+            hideSpeedBanner();
             resetDemo();
             renderDemoRows();
             handler.postDelayed(demoTicker, 1000L);
@@ -222,6 +228,24 @@ public final class HudService extends Service implements LocationListener {
                 LinearLayout.LayoutParams.WRAP_CONTENT);
         bannerParams.setMargins(0, 0, 0, dp(5));
         root.addView(banner, bannerParams);
+
+        TextView speed = new TextView(this);
+        speedBanner = speed;
+        speed.setTextColor(Color.WHITE);
+        speed.setTextSize(14);
+        speed.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
+        speed.setGravity(Gravity.CENTER);
+        speed.setSingleLine(true);
+        speed.setPadding(dp(8), dp(5), dp(8), dp(5));
+        speed.setBackground(buildSpeedAlertBackground());
+        speed.setVisibility(View.GONE);
+        LinearLayout.LayoutParams speedParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        speedParams.setMargins(0, 0, 0, dp(5));
+        root.addView(speed, speedParams);
+
+        applyOverlayOpacity();
 
         for (int i = 0; i < 3; i++) {
             LinearLayout row = new LinearLayout(this);
@@ -383,6 +407,20 @@ public final class HudService extends Service implements LocationListener {
         return bg;
     }
 
+    private GradientDrawable buildSpeedAlertBackground() {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.argb(235, 185, 45, 40));
+        bg.setCornerRadius(dp(10));
+        bg.setStroke(dp(1), Color.argb(110, 255, 255, 255));
+        return bg;
+    }
+
+    private void applyOverlayOpacity() {
+        if (overlayRoot == null) return;
+        int percent = UserSettings.overlayOpacityPercent(this);
+        overlayRoot.setAlpha(percent / 100f);
+    }
+
     private void startLocationUpdates() {
         if (!hasLocationPermission()) return;
         try {
@@ -449,7 +487,9 @@ public final class HudService extends Service implements LocationListener {
         }
         // When stopped with existing candidates, deliberately keep them frozen.
         // GPS course becomes noisy near 0 km/h, but the signal phase must keep counting.
+        applyOverlayOpacity();
         updateEnforcementWarning();
+        updateSpeedAlert();
         renderLiveRows();
     }
 
@@ -496,7 +536,10 @@ public final class HudService extends Service implements LocationListener {
             overlayRoot.post(this::snapOverlayToRightEdge);
         }
 
-        int voiceStage = match.distanceMeters <= 180f ? 2 : 1;
+        float closeStageDistance = Math.min(
+                180f,
+                Math.max(25f, match.warningDistanceMeters * 0.35f));
+        int voiceStage = match.distanceMeters <= closeStageDistance ? 2 : 1;
         if (voiceStage > activeEnforcementVoiceStage) {
             long now = SystemClock.elapsedRealtime();
             boolean recentSamePoint = match.point.id.equals(lastSpokenEnforcementId)
@@ -507,6 +550,59 @@ public final class HudService extends Service implements LocationListener {
                 lastSpokenEnforcementElapsedMs = now;
             }
             activeEnforcementVoiceStage = voiceStage;
+        }
+    }
+
+    private void updateSpeedAlert() {
+        if (speedBanner == null || latestLocation == null || !latestLocation.hasSpeed()) {
+            hideSpeedBanner();
+            speedAlertActive = false;
+            return;
+        }
+
+        int thresholdKmh = UserSettings.speedAlertKmh(this);
+        int currentKmh = Math.max(0, Math.round(latestLocation.getSpeed() * 3.6f));
+        int resetKmh = Math.max(0, thresholdKmh - 3);
+
+        if (currentKmh < resetKmh) {
+            speedAlertActive = false;
+            hideSpeedBanner();
+            return;
+        }
+
+        if (currentKmh < thresholdKmh) {
+            hideSpeedBanner();
+            return;
+        }
+
+        boolean wasHidden = speedBanner.getVisibility() != View.VISIBLE;
+        speedBanner.setText("車速 " + currentKmh + " km/h｜提醒 " + thresholdKmh);
+        speedBanner.setVisibility(View.VISIBLE);
+        if (wasHidden && overlayRoot != null) {
+            overlayRoot.requestLayout();
+            overlayRoot.post(this::snapOverlayToRightEdge);
+        }
+
+        long now = SystemClock.elapsedRealtime();
+        boolean shouldSpeak = !speedAlertActive
+                || now - lastSpeedAlertSpokenElapsedMs >= 60_000L;
+        if (shouldSpeak && ttsReady && tts != null) {
+            tts.speak(
+                    "車速提醒，目前" + currentKmh + "公里",
+                    TextToSpeech.QUEUE_ADD,
+                    null,
+                    "speed-alert-" + now);
+            lastSpeedAlertSpokenElapsedMs = now;
+        }
+        speedAlertActive = true;
+    }
+
+    private void hideSpeedBanner() {
+        if (speedBanner == null || speedBanner.getVisibility() == View.GONE) return;
+        speedBanner.setVisibility(View.GONE);
+        if (overlayRoot != null) {
+            overlayRoot.requestLayout();
+            overlayRoot.post(this::snapOverlayToRightEdge);
         }
     }
 
