@@ -12,7 +12,7 @@ import java.util.Collections;
 import java.util.List;
 
 public final class EnforcementStore {
-    public enum Type { SPEED, RED_LIGHT, TECH }
+    public enum Type { SPEED, RED_LIGHT, TECH, SECTION }
 
     public static final class Point {
         public final String id;
@@ -137,6 +137,28 @@ public final class EnforcementStore {
         String d = direction.trim();
         if (d.isEmpty()) return true;
 
+        if (d.startsWith("BEARING:")) {
+            try {
+                float expectedBearing = Float.parseFloat(d.substring("BEARING:".length()));
+                return angleDeltaAbs(travelBearing, expectedBearing) <= 58f;
+            } catch (NumberFormatException ignored) {
+                return true;
+            }
+        }
+
+        if (containsAny(d, "西南向東北", "西南向东北", "西南往東北", "西南往东北")) {
+            return angleDeltaAbs(travelBearing, 45f) <= 58f;
+        }
+        if (containsAny(d, "西北向東南", "西北向东南", "西北往東南", "西北往东南")) {
+            return angleDeltaAbs(travelBearing, 135f) <= 58f;
+        }
+        if (containsAny(d, "東北向西南", "东北向西南", "東北往西南", "东北往西南")) {
+            return angleDeltaAbs(travelBearing, 225f) <= 58f;
+        }
+        if (containsAny(d, "東南向西北", "东南向西北", "東南往西北", "东南往西北")) {
+            return angleDeltaAbs(travelBearing, 315f) <= 58f;
+        }
+
         ArrayList<Float> expected = new ArrayList<>(2);
         if (containsAny(d, "南北雙向", "南北双向")) {
             expected.add(0f);
@@ -145,10 +167,11 @@ public final class EnforcementStore {
             expected.add(90f);
             expected.add(270f);
         } else {
-            if (containsAny(d, "南向北", "往北")) expected.add(0f);
-            if (containsAny(d, "西向東", "西向东", "往東", "往东")) expected.add(90f);
-            if (containsAny(d, "北向南", "往南")) expected.add(180f);
-            if (containsAny(d, "東向西", "东向西", "往西")) expected.add(270f);
+            if (containsAny(d, "南向北", "南往北", "往北")) expected.add(0f);
+            if (containsAny(d, "西向東", "西向东", "西往東", "西往东", "往東", "往东")) expected.add(90f);
+            if (containsAny(d, "北向南", "北往南", "往南")) expected.add(180f);
+            if (containsAny(d, "東向西", "东向西", "東往西", "东往西", "往西")) expected.add(270f);
+
         }
 
         // Unknown wording is deliberately permissive; an unrecognized source string

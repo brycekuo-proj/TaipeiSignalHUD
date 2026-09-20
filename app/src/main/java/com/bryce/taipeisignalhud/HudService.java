@@ -454,10 +454,11 @@ public final class HudService extends Service implements LocationListener {
 
         // Until road-level metadata is attached to enforcement points, suppress
         // intersection-style warnings on elevated/high-speed roads. Fixed speed
-        // cameras remain enabled because they are common on those roads.
+        // cameras and section-speed entrances remain enabled because they are common there.
         if (match != null
                 && locationFilter.isHighSpeedRoadMode()
-                && match.point.type != EnforcementStore.Type.SPEED) {
+                && match.point.type != EnforcementStore.Type.SPEED
+                && match.point.type != EnforcementStore.Type.SECTION) {
             match = null;
         }
 
@@ -513,6 +514,8 @@ public final class HudService extends Service implements LocationListener {
         StringBuilder text = new StringBuilder();
         if (match.point.type == EnforcementStore.Type.SPEED) {
             text.append("測速 ");
+        } else if (match.point.type == EnforcementStore.Type.SECTION) {
+            text.append("區間測速 ");
         } else if (match.point.type == EnforcementStore.Type.RED_LIGHT) {
             text.append("闖紅燈 ");
         } else {
@@ -521,7 +524,9 @@ public final class HudService extends Service implements LocationListener {
         text.append(distance).append("m");
 
         String speed = compactSpeedLimit(match.point.speedLimit);
-        if (!speed.isEmpty() && match.point.type == EnforcementStore.Type.SPEED) {
+        if (!speed.isEmpty()
+                && (match.point.type == EnforcementStore.Type.SPEED
+                || match.point.type == EnforcementStore.Type.SECTION)) {
             text.append("｜速限").append(speed);
         }
         return text.toString();
@@ -541,6 +546,8 @@ public final class HudService extends Service implements LocationListener {
         String type;
         if (match.point.type == EnforcementStore.Type.SPEED) {
             type = "測速照相";
+        } else if (match.point.type == EnforcementStore.Type.SECTION) {
+            type = "區間測速";
         } else if (match.point.type == EnforcementStore.Type.RED_LIGHT) {
             type = "闖紅燈照相";
         } else {
@@ -549,7 +556,9 @@ public final class HudService extends Service implements LocationListener {
 
         StringBuilder spoken = new StringBuilder(prefix).append(type);
         String speed = compactSpeedLimit(match.point.speedLimit);
-        if (!speed.isEmpty() && match.point.type == EnforcementStore.Type.SPEED) {
+        if (!speed.isEmpty()
+                && (match.point.type == EnforcementStore.Type.SPEED
+                || match.point.type == EnforcementStore.Type.SECTION)) {
             spoken.append("，速限").append(speed.replace("/", "或"));
         }
         tts.speak(
@@ -561,7 +570,8 @@ public final class HudService extends Service implements LocationListener {
 
     private String compactSpeedLimit(String raw) {
         if (raw == null || raw.trim().isEmpty() || "\\".equals(raw.trim())) return "";
-        String digits = raw.replaceAll("[^0-9]+", " ").trim();
+        String normalized = raw.replaceAll("[0-9]+\\s*噸", "");
+        String digits = normalized.replaceAll("[^0-9]+", " ").trim();
         if (digits.isEmpty()) return "";
         String[] pieces = digits.split("\\s+");
         StringBuilder out = new StringBuilder();
