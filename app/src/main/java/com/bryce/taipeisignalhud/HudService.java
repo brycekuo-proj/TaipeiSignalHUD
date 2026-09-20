@@ -57,6 +57,8 @@ public final class HudService extends Service implements LocationListener {
     private IntersectionStore intersectionStore;
     private SignalPlanStore signalPlanStore;
     private EnforcementStore enforcementStore;
+    private SpecialRoadStore specialRoadStore;
+    private SpecialRoadStore.Match specialRoadMatch;
     private HudMcpClient mcpClient;
     private TextToSpeech tts;
     private boolean ttsReady = false;
@@ -125,6 +127,7 @@ public final class HudService extends Service implements LocationListener {
         intersectionStore = new IntersectionStore(this);
         signalPlanStore = new SignalPlanStore(this);
         enforcementStore = new EnforcementStore(this);
+        specialRoadStore = new SpecialRoadStore(this);
         mcpClient = new HudMcpClient(this);
         tts = new TextToSpeech(this, status -> {
             if (status != TextToSpeech.SUCCESS || tts == null) return;
@@ -180,7 +183,7 @@ public final class HudService extends Service implements LocationListener {
                 : new Notification.Builder(this);
         return b.setSmallIcon(android.R.drawable.ic_menu_mylocation)
                 .setContentTitle("TaipeiSignalHUD 道路測試")
-                .setContentText("GPS、號誌倒數、測速與科技執法提示正在運作")
+                .setContentText("GPS、道路層級、號誌倒數與執法提示正在運作")
                 .setOngoing(true)
                 .setContentIntent(pi)
                 .build();
@@ -421,18 +424,28 @@ public final class HudService extends Service implements LocationListener {
             }
         }
 
-        if (locationFilter.isHighSpeedRoadMode()) {
+        specialRoadMatch = specialRoadStore == null
+                ? null : specialRoadStore.update(location, stableTravelBearingDeg);
+        boolean suppressSurfaceSignals = shouldSuppressSurfaceSignals();
+        if (suppressSurfaceSignals) {
             latestCandidates = Collections.emptyList();
+            latestMcpSnapshot = null;
+            latestMcpReceivedElapsedMs = 0L;
         } else if (movingWithReliableBearing) {
-            // While moving, continuously refresh the forward corridor and remember it.
-            latestCandidates = intersectionStore.findAhead(location, 3);
+            // A recognized ramp is the handoff point from grade-separated mainline
+            // to the first reachable surface signal. Limit it to the nearest signal.
+            int candidateLimit = specialRoadStore != null && specialRoadStore.isOnRamp()
+                    ? 1 : 3;
+            latestCandidates = intersectionStore.findAhead(location, candidateLimit);
         } else if (stableTravelBearingDeg != null && latestCandidates.isEmpty()) {
             // If the service starts just as the vehicle is slowing/stopped, reuse the
             // last reliable travel direction to acquire candidates once.
             Location matchingLocation = new Location(location);
             matchingLocation.setBearing(stableTravelBearingDeg);
             matchingLocation.setSpeed(2.1f);
-            latestCandidates = intersectionStore.findAhead(matchingLocation, 3);
+            int candidateLimit = specialRoadStore != null && specialRoadStore.isOnRamp()
+                    ? 1 : 3;
+            latestCandidates = intersectionStore.findAhead(matchingLocation, candidateLimit);
         }
         // When stopped with existing candidates, deliberately keep them frozen.
         // GPS course becomes noisy near 0 km/h, but the signal phase must keep counting.
@@ -452,11 +465,11 @@ public final class HudService extends Service implements LocationListener {
         EnforcementStore.Match match =
                 enforcementStore.findApproaching(latestLocation, stableTravelBearingDeg);
 
-        // Until road-level metadata is attached to enforcement points, suppress
-        // intersection-style warnings on elevated/high-speed roads. Fixed speed
-        // cameras and section-speed entrances remain enabled because they are common there.
+        // Suppress intersection-style enforcement that belongs to the surface
+        // while we are locked to an elevated/expressway/highway/tunnel mainline.
+        // Fixed and section-speed enforcement remain valid on those facilities.
         if (match != null
-                && locationFilter.isHighSpeedRoadMode()
+                && shouldSuppressSurfaceSignals()
                 && match.point.type != EnforcementStore.Type.SPEED
                 && match.point.type != EnforcementStore.Type.SECTION) {
             match = null;
@@ -603,6 +616,7 @@ public final class HudService extends Service implements LocationListener {
     private void requestMcpSnapshotIfNeeded() {
         if (demoMode || mcpClient == null || !mcpClient.isConfigured()) return;
         if (latestLocation == null || stableTravelBearingDeg == null) return;
+        if (shouldSuppressSurfaceSignals()) return;
         long nowElapsed = SystemClock.elapsedRealtime();
         if (mcpRequestInFlight || nowElapsed - lastMcpRequestElapsedMs < 450L) return;
 
@@ -675,18 +689,13 @@ public final class HudService extends Service implements LocationListener {
             return;
         }
 
-        if (hasFreshMcpSnapshot()) {
-            renderMcpRows();
+        if (shouldSuppressSurfaceSignals()) {
+            renderSpecialRoadRows();
             return;
         }
 
-        if (locationFilter.isHighSpeedRoadMode()) {
-            lights[0].setSignal(TrafficLightView.State.UNKNOWN, "--");
-            names[0].setText("高速／快速道路模式");
-            lights[1].setSignal(TrafficLightView.State.UNKNOWN, "--");
-            names[1].setText("MCP 無匝道資料，已抑制平面號誌");
-            lights[2].setSignal(TrafficLightView.State.UNKNOWN, "--");
-            names[2].setText("等待匝道／降速匹配");
+        if (hasFreshMcpSnapshot()) {
+            renderMcpRows();
             return;
         }
 
@@ -722,6 +731,46 @@ public final class HudService extends Service implements LocationListener {
                 lights[i].setSignal(TrafficLightView.State.UNKNOWN, "--");
             }
         }
+    }
+
+    private boolean shouldSuppressSurfaceSignals() {
+        boolean geometryLock = specialRoadStore != null
+                && specialRoadStore.shouldSuppressSurfaceSignals();
+        // Preserve the old speed heuristic only when the OSM special-road matcher
+        // has no active road context at all.
+        boolean fallback = specialRoadMatch == null
+                && locationFilter.isHighSpeedRoadMode();
+        return geometryLock || fallback;
+    }
+
+    private void renderSpecialRoadRows() {
+        String road = "高速／快速道路";
+        String structure = "特殊道路主線";
+        if (specialRoadMatch != null) {
+            road = specialRoadMatch.displayName();
+            switch (specialRoadMatch.segment.structure) {
+                case ELEVATED:
+                    structure = "高架道路";
+                    break;
+                case TUNNEL:
+                    structure = "隧道／地下道";
+                    break;
+                case MAINLINE:
+                    structure = specialRoadMatch.segment.roadClass == SpecialRoadStore.RoadClass.HIGHWAY
+                            ? "高速公路主線" : "快速道路主線";
+                    break;
+                default:
+                    structure = "特殊道路主線";
+                    break;
+            }
+        }
+
+        lights[0].setSignal(TrafficLightView.State.UNKNOWN, "--");
+        names[0].setText(formatIntersectionName(road));
+        lights[1].setSignal(TrafficLightView.State.UNKNOWN, "--");
+        names[1].setText(structure + "\n已抑制平面號誌");
+        lights[2].setSignal(TrafficLightView.State.UNKNOWN, "--");
+        names[2].setText("出口匝道後\n重新搜尋號誌");
     }
 
     private void resetDemo() {
