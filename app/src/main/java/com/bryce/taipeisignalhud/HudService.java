@@ -22,6 +22,7 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.provider.Settings;
+import android.speech.tts.TextToSpeech;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -32,6 +33,7 @@ import android.widget.TextView;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -47,13 +49,21 @@ public final class HudService extends Service implements LocationListener {
     private WindowManager.LayoutParams overlayParams;
     private View overlayView;
     private LinearLayout overlayRoot;
+    private TextView enforcementBanner;
     private final TrafficLightView[] lights = new TrafficLightView[3];
     private final TextView[] names = new TextView[3];
 
     private LocationManager locationManager;
     private IntersectionStore intersectionStore;
     private SignalPlanStore signalPlanStore;
+    private EnforcementStore enforcementStore;
     private HudMcpClient mcpClient;
+    private TextToSpeech tts;
+    private boolean ttsReady = false;
+    private String activeEnforcementId = null;
+    private int activeEnforcementVoiceStage = 0;
+    private String lastSpokenEnforcementId = null;
+    private long lastSpokenEnforcementElapsedMs = 0L;
     private final RoadLocationFilter locationFilter = new RoadLocationFilter();
     private final ExecutorService mcpExecutor = Executors.newSingleThreadExecutor();
     private Location latestLocation;
@@ -114,7 +124,14 @@ public final class HudService extends Service implements LocationListener {
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
         intersectionStore = new IntersectionStore(this);
         signalPlanStore = new SignalPlanStore(this);
+        enforcementStore = new EnforcementStore(this);
         mcpClient = new HudMcpClient(this);
+        tts = new TextToSpeech(this, status -> {
+            if (status != TextToSpeech.SUCCESS || tts == null) return;
+            int languageResult = tts.setLanguage(Locale.TAIWAN);
+            ttsReady = languageResult != TextToSpeech.LANG_MISSING_DATA
+                    && languageResult != TextToSpeech.LANG_NOT_SUPPORTED;
+        });
         createChannel();
     }
 
@@ -140,6 +157,7 @@ public final class HudService extends Service implements LocationListener {
         handler.removeCallbacks(liveTicker);
 
         if (demoMode) {
+            hideEnforcementBanner();
             resetDemo();
             renderDemoRows();
             handler.postDelayed(demoTicker, 1000L);
@@ -162,7 +180,7 @@ public final class HudService extends Service implements LocationListener {
                 : new Notification.Builder(this);
         return b.setSmallIcon(android.R.drawable.ic_menu_mylocation)
                 .setContentTitle("TaipeiSignalHUD 道路測試")
-                .setContentText("GPS、前方路口與號誌倒數正在運作")
+                .setContentText("GPS、號誌倒數、測速與科技執法提示正在運作")
                 .setOngoing(true)
                 .setContentIntent(pi)
                 .build();
@@ -185,6 +203,22 @@ public final class HudService extends Service implements LocationListener {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(10), dp(8), dp(12), dp(8));
         root.setBackground(buildOverlayBackground());
+
+        TextView banner = new TextView(this);
+        enforcementBanner = banner;
+        banner.setTextColor(Color.WHITE);
+        banner.setTextSize(14);
+        banner.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
+        banner.setGravity(Gravity.CENTER);
+        banner.setSingleLine(true);
+        banner.setPadding(dp(8), dp(5), dp(8), dp(5));
+        banner.setBackground(buildEnforcementBackground());
+        banner.setVisibility(View.GONE);
+        LinearLayout.LayoutParams bannerParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        bannerParams.setMargins(0, 0, 0, dp(5));
+        root.addView(banner, bannerParams);
 
         for (int i = 0; i < 3; i++) {
             LinearLayout row = new LinearLayout(this);
@@ -338,6 +372,14 @@ public final class HudService extends Service implements LocationListener {
         return bg;
     }
 
+    private GradientDrawable buildEnforcementBackground() {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.argb(235, 210, 92, 24));
+        bg.setCornerRadius(dp(10));
+        bg.setStroke(dp(1), Color.argb(110, 255, 255, 255));
+        return bg;
+    }
+
     private void startLocationUpdates() {
         if (!hasLocationPermission()) return;
         try {
@@ -394,7 +436,151 @@ public final class HudService extends Service implements LocationListener {
         }
         // When stopped with existing candidates, deliberately keep them frozen.
         // GPS course becomes noisy near 0 km/h, but the signal phase must keep counting.
+        updateEnforcementWarning();
         renderLiveRows();
+    }
+
+    private void updateEnforcementWarning() {
+        if (enforcementStore == null
+                || enforcementBanner == null
+                || latestLocation == null
+                || stableTravelBearingDeg == null) {
+            hideEnforcementBanner();
+            return;
+        }
+
+        EnforcementStore.Match match =
+                enforcementStore.findApproaching(latestLocation, stableTravelBearingDeg);
+
+        // Until road-level metadata is attached to enforcement points, suppress
+        // intersection-style warnings on elevated/high-speed roads. Fixed speed
+        // cameras remain enabled because they are common on those roads.
+        if (match != null
+                && locationFilter.isHighSpeedRoadMode()
+                && match.point.type != EnforcementStore.Type.SPEED) {
+            match = null;
+        }
+
+        if (match == null) {
+            hideEnforcementBanner();
+            activeEnforcementId = null;
+            activeEnforcementVoiceStage = 0;
+            return;
+        }
+
+        boolean isNewPoint = !match.point.id.equals(activeEnforcementId);
+        if (isNewPoint) {
+            activeEnforcementId = match.point.id;
+            activeEnforcementVoiceStage = 0;
+        }
+
+        boolean wasHidden = enforcementBanner.getVisibility() != View.VISIBLE;
+        enforcementBanner.setText(formatEnforcementBanner(match));
+        enforcementBanner.setVisibility(View.VISIBLE);
+        if (wasHidden && overlayRoot != null) {
+            overlayRoot.requestLayout();
+            overlayRoot.post(this::snapOverlayToRightEdge);
+        }
+
+        int voiceStage = match.distanceMeters <= 180f ? 2 : 1;
+        if (voiceStage > activeEnforcementVoiceStage) {
+            long now = SystemClock.elapsedRealtime();
+            boolean recentSamePoint = match.point.id.equals(lastSpokenEnforcementId)
+                    && now - lastSpokenEnforcementElapsedMs < 120_000L;
+            if (voiceStage == 2 || !recentSamePoint) {
+                speakEnforcement(match, voiceStage);
+                lastSpokenEnforcementId = match.point.id;
+                lastSpokenEnforcementElapsedMs = now;
+            }
+            activeEnforcementVoiceStage = voiceStage;
+        }
+    }
+
+    private void hideEnforcementBanner() {
+        if (enforcementBanner == null
+                || enforcementBanner.getVisibility() == View.GONE) {
+            return;
+        }
+        enforcementBanner.setVisibility(View.GONE);
+        if (overlayRoot != null) {
+            overlayRoot.requestLayout();
+            overlayRoot.post(this::snapOverlayToRightEdge);
+        }
+    }
+
+    private String formatEnforcementBanner(EnforcementStore.Match match) {
+        int distance = Math.max(20, Math.round(match.distanceMeters / 10f) * 10);
+        StringBuilder text = new StringBuilder();
+        if (match.point.type == EnforcementStore.Type.SPEED) {
+            text.append("測速 ");
+        } else if (match.point.type == EnforcementStore.Type.RED_LIGHT) {
+            text.append("闖紅燈 ");
+        } else {
+            text.append("科技執法 ");
+        }
+        text.append(distance).append("m");
+
+        String speed = compactSpeedLimit(match.point.speedLimit);
+        if (!speed.isEmpty() && match.point.type == EnforcementStore.Type.SPEED) {
+            text.append("｜速限").append(speed);
+        }
+        return text.toString();
+    }
+
+    private void speakEnforcement(EnforcementStore.Match match, int stage) {
+        if (!ttsReady || tts == null) return;
+
+        String prefix;
+        if (stage >= 2) {
+            prefix = "即將通過";
+        } else {
+            int distance = Math.max(50, Math.round(match.distanceMeters / 50f) * 50);
+            prefix = "前方" + distance + "公尺";
+        }
+
+        String type;
+        if (match.point.type == EnforcementStore.Type.SPEED) {
+            type = "測速照相";
+        } else if (match.point.type == EnforcementStore.Type.RED_LIGHT) {
+            type = "闖紅燈照相";
+        } else {
+            type = "科技執法";
+        }
+
+        StringBuilder spoken = new StringBuilder(prefix).append(type);
+        String speed = compactSpeedLimit(match.point.speedLimit);
+        if (!speed.isEmpty() && match.point.type == EnforcementStore.Type.SPEED) {
+            spoken.append("，速限").append(speed.replace("/", "或"));
+        }
+        tts.speak(
+                spoken.toString(),
+                TextToSpeech.QUEUE_FLUSH,
+                null,
+                "enforcement-" + match.point.id + "-" + stage);
+    }
+
+    private String compactSpeedLimit(String raw) {
+        if (raw == null || raw.trim().isEmpty() || "\\".equals(raw.trim())) return "";
+        String digits = raw.replaceAll("[^0-9]+", " ").trim();
+        if (digits.isEmpty()) return "";
+        String[] pieces = digits.split("\\s+");
+        StringBuilder out = new StringBuilder();
+        for (String piece : pieces) {
+            if (piece.isEmpty()) continue;
+            boolean duplicate = false;
+            String[] existing = out.toString().split("/");
+            for (String value : existing) {
+                if (piece.equals(value)) {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if (duplicate) continue;
+            if (out.length() > 0) out.append('/');
+            out.append(piece);
+            if (out.indexOf("/") >= 0) break;
+        }
+        return out.toString();
     }
 
     private void renderWaitingRows() {
@@ -594,6 +780,12 @@ public final class HudService extends Service implements LocationListener {
         handler.removeCallbacks(demoTicker);
         handler.removeCallbacks(liveTicker);
         mcpExecutor.shutdownNow();
+        if (tts != null) {
+            try { tts.stop(); } catch (Exception ignored) {}
+            try { tts.shutdown(); } catch (Exception ignored) {}
+            tts = null;
+            ttsReady = false;
+        }
         if (locationManager != null) {
             try { locationManager.removeUpdates(this); } catch (SecurityException ignored) {}
         }
