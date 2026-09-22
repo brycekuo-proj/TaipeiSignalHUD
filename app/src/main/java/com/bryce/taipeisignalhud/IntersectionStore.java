@@ -78,9 +78,12 @@ public final class IntersectionStore {
         double heading = normalizeBearing(location.getBearing());
         double accuracy = location.hasAccuracy() ? Math.max(5.0, location.getAccuracy()) : 25.0;
 
-        double maxDistance = speed >= 12f ? 1800.0 : 1200.0;
-        double maxAngle = speed >= 12f ? 32.0 : 45.0;
-        double maxCrossTrack = Math.max(speed >= 12f ? 55.0 : 70.0, accuracy * 1.8);
+        // Keep candidate search conservative. The HUD must prefer showing nothing
+        // over jumping several intersections ahead or onto a nearby parallel road.
+        double maxDistance = speed >= 12f ? 900.0 : 700.0;
+        double maxAngle = speed >= 12f ? 28.0 : 38.0;
+        double maxCrossTrack = Math.max(speed >= 12f ? 45.0 : 55.0, accuracy * 1.45);
+        maxCrossTrack = Math.min(maxCrossTrack, 85.0);
 
         ArrayList<Candidate> result = new ArrayList<>();
         for (Intersection s : intersections) {
@@ -118,6 +121,16 @@ public final class IntersectionStore {
                 .thenComparingDouble(c -> c.crossTrackM)
                 .thenComparingDouble(c -> c.distanceM));
 
+        // Do not jump to a far-away candidate merely because nearer intersections are
+        // missing from the dataset. A 5–6 intersection skip is worse than showing no
+        // signal. The horizon grows modestly with speed but stays bounded for city use.
+        double firstCandidateHorizonM = Math.max(
+                280.0,
+                Math.min(480.0, 220.0 + speed * 12.0 + accuracy * 1.5));
+        if (result.isEmpty() || result.get(0).alongTrackM > firstCandidateHorizonM) {
+            return Collections.emptyList();
+        }
+
         ArrayList<Candidate> deduped = new ArrayList<>();
         Set<String> seenNames = new HashSet<>();
         for (Candidate c : result) {
@@ -128,6 +141,42 @@ public final class IntersectionStore {
                     ? c.intersection.id
                     : normalizeName(c.intersection.name);
             if (!seenNames.add(key)) continue;
+
+            // Once the first plausible intersection is found, do not allow later rows
+            // to leap across a large data gap. This keeps the three HUD rows tied to one
+            // local corridor instead of mixing in distant/parallel-road signals.
+            if (!deduped.isEmpty()) {
+                double gap = c.alongTrackM - deduped.get(deduped.size() - 1).alongTrackM;
+                if (gap > 420.0) break;
+            }
+
+            deduped.add(c);
+            if (deduped.size() >= limit) break;
+        }
+        return deduped;
+    }
+
+    public List<Candidate> findNear(
+            double latitude, double longitude, int limit, double maxDistanceM) {
+        if (intersections.isEmpty() || limit <= 0 || maxDistanceM <= 0.0) {
+            return Collections.emptyList();
+        }
+
+        ArrayList<Candidate> result = new ArrayList<>();
+        for (Intersection s : intersections) {
+            double distance = distanceMeters(latitude, longitude, s.latitude, s.longitude);
+            if (distance < 5.0 || distance > maxDistanceM) continue;
+            result.add(new Candidate(s, distance, distance, 0.0, 0.0));
+        }
+
+        Collections.sort(result, Comparator.comparingDouble(c -> c.distanceM));
+        ArrayList<Candidate> deduped = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (Candidate c : result) {
+            String key = c.intersection.isCoverageOnly()
+                    ? c.intersection.id
+                    : normalizeName(c.intersection.name);
+            if (!seen.add(key)) continue;
             deduped.add(c);
             if (deduped.size() >= limit) break;
         }

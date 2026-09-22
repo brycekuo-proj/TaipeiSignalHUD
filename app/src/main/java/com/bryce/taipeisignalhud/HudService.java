@@ -32,8 +32,10 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -80,7 +82,6 @@ public final class HudService extends Service implements LocationListener {
     private long lastMcpRequestElapsedMs = 0L;
     private volatile boolean mcpRequestInFlight = false;
     private boolean demoMode = false;
-    private boolean overlayDocked = false;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final int[] demoSeconds = new int[]{22, 41, 3};
@@ -213,6 +214,9 @@ public final class HudService extends Service implements LocationListener {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(10), dp(8), dp(12), dp(8));
         root.setBackground(buildOverlayBackground());
+        // Keep the HUD compact: roughly a six-Chinese-character road-name column.
+        // Warning banners must never widen the black box.
+        root.setMinimumWidth(0);
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
@@ -246,11 +250,13 @@ public final class HudService extends Service implements LocationListener {
         banner.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
         banner.setGravity(Gravity.CENTER);
         banner.setSingleLine(true);
+        banner.setEllipsize(TextUtils.TruncateAt.END);
+        banner.setWidth(dp(169));
         banner.setPadding(dp(8), dp(5), dp(8), dp(5));
         banner.setBackground(buildEnforcementBackground());
         banner.setVisibility(View.GONE);
         LinearLayout.LayoutParams bannerParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
         bannerParams.setMargins(0, 0, 0, dp(5));
         root.addView(banner, bannerParams);
@@ -262,11 +268,13 @@ public final class HudService extends Service implements LocationListener {
         speed.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
         speed.setGravity(Gravity.CENTER);
         speed.setSingleLine(true);
+        speed.setEllipsize(TextUtils.TruncateAt.END);
+        speed.setWidth(dp(169));
         speed.setPadding(dp(8), dp(5), dp(8), dp(5));
         speed.setBackground(buildSpeedAlertBackground());
         speed.setVisibility(View.GONE);
         LinearLayout.LayoutParams speedParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
         speedParams.setMargins(0, 0, 0, dp(5));
         root.addView(speed, speedParams);
@@ -291,10 +299,10 @@ public final class HudService extends Service implements LocationListener {
             name.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
             name.setSingleLine(false);
             name.setMaxLines(2);
-            name.setEllipsize(TextUtils.TruncateAt.END);
+            name.setEllipsize(null);
+            name.setHorizontallyScrolling(false);
             name.setLineSpacing(0f, 0.96f);
-            name.setMaxWidth(dp(230));
-            name.setMinWidth(dp(120));
+            name.setWidth(dp(112));
             row.addView(name, new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -373,9 +381,8 @@ public final class HudService extends Service implements LocationListener {
                             setOverlayCompact(true);
                         } else if (dx <= -dp(24)) {
                             setOverlayCompact(false);
-                        } else {
-                            snapOverlayToRightEdge();
                         }
+                        // Keep the exact drag position. No edge auto-snap.
                         return true;
                     default:
                         return true;
@@ -385,7 +392,6 @@ public final class HudService extends Service implements LocationListener {
     }
 
     private void setOverlayCompact(boolean compact) {
-        overlayDocked = compact;
         if (overlayRoot == null) return;
 
         for (TextView name : names) {
@@ -399,6 +405,7 @@ public final class HudService extends Service implements LocationListener {
             if (parent != null) parent.setVisibility(compact ? View.GONE : View.VISIBLE);
         }
 
+        overlayRoot.setMinimumWidth(0);
         if (compact) {
             overlayRoot.setPadding(0, 0, 0, 0);
             overlayRoot.setBackground(null);
@@ -408,18 +415,6 @@ public final class HudService extends Service implements LocationListener {
         }
 
         overlayRoot.requestLayout();
-        overlayRoot.post(this::snapOverlayToRightEdge);
-    }
-
-    private void snapOverlayToRightEdge() {
-        if (overlayParams == null || overlayView == null) return;
-        int screenWidth = getResources().getDisplayMetrics().widthPixels;
-        int margin = overlayDocked ? dp(2) : dp(10);
-        overlayParams.x = Math.max(0, screenWidth - overlayView.getWidth() - margin);
-        try {
-            windowManager.updateViewLayout(overlayView, overlayParams);
-        } catch (Exception ignored) {
-        }
     }
 
     private GradientDrawable buildOverlayBackground() {
@@ -554,8 +549,9 @@ public final class HudService extends Service implements LocationListener {
             return;
         }
 
-        EnforcementStore.Match match =
-                enforcementStore.findApproaching(latestLocation, stableTravelBearingDeg);
+        String currentRoadKey = inferCurrentRoadKey();
+        EnforcementStore.Match match = enforcementStore.findApproaching(
+                latestLocation, stableTravelBearingDeg, currentRoadKey);
 
         // Suppress intersection-style enforcement that belongs to the surface
         // while we are locked to an elevated/expressway/highway/tunnel mainline.
@@ -585,7 +581,6 @@ public final class HudService extends Service implements LocationListener {
         enforcementBanner.setVisibility(View.VISIBLE);
         if (wasHidden && overlayRoot != null) {
             overlayRoot.requestLayout();
-            overlayRoot.post(this::snapOverlayToRightEdge);
         }
 
         float closeStageDistance = Math.min(
@@ -612,7 +607,7 @@ public final class HudService extends Service implements LocationListener {
             return;
         }
 
-        int thresholdKmh = UserSettings.speedAlertKmh(this);
+        int thresholdKmh = currentSpeedAlertThresholdKmh();
         int currentKmh = Math.max(0, Math.round(latestLocation.getSpeed() * 3.6f));
         int resetKmh = Math.max(0, thresholdKmh - 3);
 
@@ -628,11 +623,12 @@ public final class HudService extends Service implements LocationListener {
         }
 
         boolean wasHidden = speedBanner.getVisibility() != View.VISIBLE;
-        speedBanner.setText("車速 " + currentKmh + " km/h｜提醒 " + thresholdKmh);
+        speedBanner.setText(
+                "車速 " + currentKmh + " km/h｜"
+                        + currentSpeedRoadLabel() + " " + thresholdKmh);
         speedBanner.setVisibility(View.VISIBLE);
         if (wasHidden && overlayRoot != null) {
             overlayRoot.requestLayout();
-            overlayRoot.post(this::snapOverlayToRightEdge);
         }
 
         long now = SystemClock.elapsedRealtime();
@@ -649,12 +645,52 @@ public final class HudService extends Service implements LocationListener {
         speedAlertActive = true;
     }
 
+    private int currentSpeedAlertThresholdKmh() {
+        if (specialRoadMatch != null
+                && specialRoadMatch.stable
+                && specialRoadMatch.segment != null) {
+            if (specialRoadMatch.segment.roadClass == SpecialRoadStore.RoadClass.HIGHWAY) {
+                return UserSettings.highwaySpeedAlertKmh(this);
+            }
+            if (specialRoadMatch.segment.roadClass == SpecialRoadStore.RoadClass.EXPRESSWAY) {
+                return UserSettings.expresswaySpeedAlertKmh(this);
+            }
+        }
+
+        SpecialRoadStore.RoadState state = specialRoadStore == null
+                ? SpecialRoadStore.RoadState.SURFACE : specialRoadStore.getRoadState();
+        if (state == SpecialRoadStore.RoadState.FREEWAY) {
+            return UserSettings.highwaySpeedAlertKmh(this);
+        }
+        if (state == SpecialRoadStore.RoadState.EXPRESSWAY) {
+            return UserSettings.expresswaySpeedAlertKmh(this);
+        }
+        return UserSettings.generalSpeedAlertKmh(this);
+    }
+
+    private String currentSpeedRoadLabel() {
+        if (specialRoadMatch != null
+                && specialRoadMatch.stable
+                && specialRoadMatch.segment != null) {
+            if (specialRoadMatch.segment.roadClass == SpecialRoadStore.RoadClass.HIGHWAY) {
+                return "高速";
+            }
+            if (specialRoadMatch.segment.roadClass == SpecialRoadStore.RoadClass.EXPRESSWAY) {
+                return "快速";
+            }
+        }
+        SpecialRoadStore.RoadState state = specialRoadStore == null
+                ? SpecialRoadStore.RoadState.SURFACE : specialRoadStore.getRoadState();
+        if (state == SpecialRoadStore.RoadState.FREEWAY) return "高速";
+        if (state == SpecialRoadStore.RoadState.EXPRESSWAY) return "快速";
+        return "一般";
+    }
+
     private void hideSpeedBanner() {
         if (speedBanner == null || speedBanner.getVisibility() == View.GONE) return;
         speedBanner.setVisibility(View.GONE);
         if (overlayRoot != null) {
             overlayRoot.requestLayout();
-            overlayRoot.post(this::snapOverlayToRightEdge);
         }
     }
 
@@ -666,8 +702,92 @@ public final class HudService extends Service implements LocationListener {
         enforcementBanner.setVisibility(View.GONE);
         if (overlayRoot != null) {
             overlayRoot.requestLayout();
-            overlayRoot.post(this::snapOverlayToRightEdge);
         }
+    }
+
+    private String inferCurrentRoadKey() {
+        if (specialRoadMatch != null
+                && specialRoadMatch.stable
+                && specialRoadMatch.segment != null) {
+            SpecialRoadStore.Segment segment = specialRoadMatch.segment;
+            // For freeways, prefer the route ref (1 / 3 / 3甲 / 5) so enforcement
+            // matching is immune to aliases such as 中山高、福高、北宜高。
+            if (segment.roadClass == SpecialRoadStore.RoadClass.HIGHWAY
+                    && segment.ref != null && !segment.ref.trim().isEmpty()) {
+                String ref = normalizeRoadText(segment.ref);
+                if (!ref.startsWith("國道")) ref = "國道" + ref + "號";
+                return ref;
+            }
+            String exact = segment.name;
+            if (exact == null || exact.trim().isEmpty()) exact = segment.ref;
+            String key = canonicalRoadKey(exact);
+            if (!key.isEmpty()) return key;
+        }
+
+        if (latestCandidates == null || latestCandidates.isEmpty()) return null;
+
+        LinkedHashMap<String, Integer> counts = new LinkedHashMap<>();
+        int limit = Math.min(3, latestCandidates.size());
+        for (int i = 0; i < limit; i++) {
+            String[] parts = splitRoadParts(latestCandidates.get(i).intersection.name);
+            for (String part : parts) {
+                String key = canonicalRoadKey(part);
+                if (key.isEmpty() || !looksLikeRoadName(key)) continue;
+                Integer old = counts.get(key);
+                counts.put(key, old == null ? 1 : old + 1);
+            }
+        }
+
+        String best = null;
+        int bestCount = 0;
+        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+            if (entry.getValue() > bestCount) {
+                best = entry.getKey();
+                bestCount = entry.getValue();
+            }
+        }
+        return best;
+    }
+
+    private String[] splitRoadParts(String raw) {
+        if (raw == null) return new String[0];
+        String normalized = raw.replace('\u3000', '、')
+                .replace('，', '、')
+                .replace(',', '、')
+                .replace('・', '、')
+                .replace('／', '、')
+                .replace('/', '、')
+                .replace(" 與 ", "、")
+                .replace("與", "、");
+        return normalized.split("、");
+    }
+
+    private String canonicalRoadKey(String raw) {
+        if (raw == null) return "";
+        String key = raw.trim();
+        if (key.isEmpty()) return "";
+        key = key.replaceAll("[（(].*$", "");
+        key = key.replaceAll("^[\\u4e00-\\u9fff]{1,6}區\\s*", "");
+        key = key.replaceAll("([一二三四五六七八九十百0-9]+段)$", "");
+        return normalizeRoadText(key);
+    }
+
+    private String normalizeRoadText(String raw) {
+        if (raw == null) return "";
+        return raw.replace('\u3000', ' ')
+                .replaceAll("\\s+", "")
+                .replace("臺", "台");
+    }
+
+    private boolean looksLikeRoadName(String text) {
+        return text.contains("路")
+                || text.contains("街")
+                || text.contains("大道")
+                || text.contains("公路")
+                || text.contains("線")
+                || text.contains("國道")
+                || text.contains("橋")
+                || text.contains("隧道");
     }
 
     private String formatEnforcementBanner(EnforcementStore.Match match) {
@@ -759,6 +879,7 @@ public final class HudService extends Service implements LocationListener {
             lights[i].setSignal(TrafficLightView.State.UNKNOWN, "--");
             names[i].setText(i == 0 ? "等待 GPS / 行進方向" : "—");
         }
+        publishCarSnapshotFromViews("等待定位");
     }
 
     private void requestMcpSnapshotIfNeeded() {
@@ -827,6 +948,7 @@ public final class HudService extends Service implements LocationListener {
                         row.state, Integer.toString(adjustedRemaining));
             }
         }
+        publishCarSnapshotFromViews("MCP 即時");
     }
 
     private void renderLiveRows() {
@@ -879,46 +1001,122 @@ public final class HudService extends Service implements LocationListener {
                 lights[i].setSignal(TrafficLightView.State.UNKNOWN, "--");
             }
         }
+        publishCarSnapshotFromViews("本機號誌資料");
     }
 
     private boolean shouldSuppressSurfaceSignals() {
-        boolean geometryLock = specialRoadStore != null
+        // Do not infer grade separation from speed alone. Fast surface boulevards and
+        // at-grade expressway sections are common; only explicit/stable geometry may
+        // suppress ordinary intersection signals.
+        return specialRoadStore != null
                 && specialRoadStore.shouldSuppressSurfaceSignals();
-        // Preserve the old speed heuristic only when the OSM special-road matcher
-        // has no active road context at all.
-        boolean fallback = specialRoadMatch == null
-                && locationFilter.isHighSpeedRoadMode();
-        return geometryLock || fallback;
     }
 
     private void renderSpecialRoadRows() {
         String road = "高速／快速道路";
-        String structure = "特殊道路主線";
+        String structure = "特殊道路";
+        String action = "已抑制平面號誌";
         if (specialRoadMatch != null) {
             road = specialRoadMatch.displayName();
-            switch (specialRoadMatch.segment.structure) {
-                case ELEVATED:
-                    structure = "高架道路";
-                    break;
-                case TUNNEL:
-                    structure = "隧道／地下道";
-                    break;
-                case MAINLINE:
-                    structure = specialRoadMatch.segment.roadClass == SpecialRoadStore.RoadClass.HIGHWAY
-                            ? "高速公路主線" : "快速道路主線";
-                    break;
-                default:
-                    structure = "特殊道路主線";
-                    break;
+        }
+
+        SpecialRoadStore.RoadState roadState = specialRoadStore == null
+                ? SpecialRoadStore.RoadState.SURFACE : specialRoadStore.getRoadState();
+        switch (roadState) {
+            case RAMP_ENTER:
+                structure = "入口匝道";
+                action = "鎖定特殊道路層級";
+                break;
+            case RAMP_EXIT:
+                structure = "出口匝道";
+                action = "完成匝道後重搜號誌";
+                break;
+            case ELEVATED:
+                structure = "高架道路";
+                break;
+            case UNDERPASS:
+                structure = "隧道／地下道";
+                break;
+            case FREEWAY:
+                structure = "高速公路主線";
+                break;
+            case EXPRESSWAY:
+                structure = "快速道路主線";
+                break;
+            default:
+                if (specialRoadMatch != null) {
+                    structure = "特殊道路";
+                }
+                break;
+        }
+
+        SpecialRoadStore.ExitAnchor exitAnchor = specialRoadStore == null
+                ? null : specialRoadStore.findForwardExitRamp(
+                        latestLocation, stableTravelBearingDeg);
+        if (exitAnchor != null && intersectionStore != null) {
+            List<IntersectionStore.Candidate> exitSignals = intersectionStore.findNear(
+                    exitAnchor.latitude, exitAnchor.longitude, 3, 500.0);
+            if (!exitSignals.isEmpty()) {
+                IntersectionStore.Candidate next = exitSignals.get(0);
+                names[0].setText("出口後 " + formatIntersectionName(next.intersection.name));
+                if (!next.intersection.isCoverageOnly() && signalPlanStore != null) {
+                    SignalPlanStore.Estimate estimate = signalPlanStore.estimate(
+                            next.intersection.id,
+                            exitAnchor.bearingDeg,
+                            System.currentTimeMillis());
+                    if (estimate.supported) {
+                        lights[0].setSignal(
+                                estimate.state,
+                                Integer.toString(estimate.remainingSeconds));
+                    } else {
+                        lights[0].setSignal(TrafficLightView.State.UNKNOWN, "--");
+                    }
+                } else {
+                    lights[0].setSignal(TrafficLightView.State.UNKNOWN, "--");
+                }
+
+                lights[1].setSignal(TrafficLightView.State.UNKNOWN, "--");
+                names[1].setText(formatIntersectionName(exitAnchor.name)
+                        + "\n約 " + Math.max(10, Math.round(exitAnchor.distanceM)) + " m");
+                lights[2].setSignal(TrafficLightView.State.UNKNOWN, "--");
+                names[2].setText("高架／快速道路中\n橋下號誌已排除");
+                publishCarSnapshotFromViews("前方出口號誌 · " + roadState.name());
+                return;
             }
+
+            lights[0].setSignal(TrafficLightView.State.UNKNOWN, "--");
+            names[0].setText(formatIntersectionName(exitAnchor.name)
+                    + "\n約 " + Math.max(10, Math.round(exitAnchor.distanceM)) + " m");
+            lights[1].setSignal(TrafficLightView.State.UNKNOWN, "--");
+            names[1].setText("出口後尚未找到\n可用號誌");
+            lights[2].setSignal(TrafficLightView.State.UNKNOWN, "--");
+            names[2].setText("橋下號誌已排除");
+            publishCarSnapshotFromViews("前方出口 · " + roadState.name());
+            return;
         }
 
         lights[0].setSignal(TrafficLightView.State.UNKNOWN, "--");
         names[0].setText(formatIntersectionName(road));
         lights[1].setSignal(TrafficLightView.State.UNKNOWN, "--");
-        names[1].setText(structure + "\n已抑制平面號誌");
+        names[1].setText(structure + "\n" + action);
         lights[2].setSignal(TrafficLightView.State.UNKNOWN, "--");
-        names[2].setText("出口匝道後\n重新搜尋號誌");
+        names[2].setText(roadState == SpecialRoadStore.RoadState.RAMP_EXIT
+                ? "匝道完成後\n搜尋第一個號誌"
+                : "避免誤抓\n上下層平面號誌");
+        publishCarSnapshotFromViews("道路層級 · " + roadState.name());
+    }
+
+    private void publishCarSnapshotFromViews(String status) {
+        String[] rowNames = new String[3];
+        TrafficLightView.State[] rowStates = new TrafficLightView.State[3];
+        String[] rowSeconds = new String[3];
+        for (int i = 0; i < 3; i++) {
+            rowNames[i] = names[i] == null ? "—" : names[i].getText().toString();
+            rowStates[i] = lights[i] == null
+                    ? TrafficLightView.State.UNKNOWN : lights[i].getSignalState();
+            rowSeconds[i] = lights[i] == null ? "--" : lights[i].getSignalSeconds();
+        }
+        CarHudState.publish(this, status, rowNames, rowStates, rowSeconds);
     }
 
     private void resetDemo() {
@@ -936,6 +1134,7 @@ public final class HudService extends Service implements LocationListener {
             lights[i].setSignal(demoStates[i], Integer.toString(demoSeconds[i]));
             names[i].setText(demoNames[i]);
         }
+        publishCarSnapshotFromViews("DEMO");
     }
 
     private String formatIntersectionName(String raw) {
@@ -943,11 +1142,14 @@ public final class HudService extends Service implements LocationListener {
         String text = raw.replace('\u3000', ' ').trim().replaceAll("\\s+", " ");
         if (text.isEmpty()) return "—";
 
-        int elevatedSeparator = text.indexOf('・');
-        if (elevatedSeparator > 0 && elevatedSeparator < text.length() - 1) {
-            return text.substring(0, elevatedSeparator).trim()
-                    + "\n"
-                    + text.substring(elevatedSeparator + 1).trim();
+        String[] separators = {"・", "、", "，", ",", "／", "/"};
+        for (String separator : separators) {
+            int index = text.indexOf(separator);
+            if (index > 0 && index < text.length() - separator.length()) {
+                return text.substring(0, index).trim()
+                        + "\n"
+                        + text.substring(index + separator.length()).trim();
+            }
         }
 
         int firstSpace = text.indexOf(' ');
@@ -955,6 +1157,13 @@ public final class HudService extends Service implements LocationListener {
             return text.substring(0, firstSpace).trim()
                     + "\n"
                     + text.substring(firstSpace + 1).trim();
+        }
+
+        int yu = text.indexOf('與');
+        if (yu > 0 && yu < text.length() - 1) {
+            return text.substring(0, yu).trim()
+                    + "\n"
+                    + text.substring(yu + 1).trim();
         }
         return text;
     }

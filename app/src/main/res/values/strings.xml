@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="amap_accessibility_description">Collects visible AMap navigation text and traffic-light related UI for SignalLogger research while recording.</string>
+</resources>

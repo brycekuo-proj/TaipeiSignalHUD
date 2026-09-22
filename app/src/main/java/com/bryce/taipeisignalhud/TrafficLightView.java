@@ -31,6 +31,14 @@ public final class TrafficLightView extends View {
         invalidate();
     }
 
+    public State getSignalState() {
+        return state;
+    }
+
+    public String getSignalSeconds() {
+        return seconds;
+    }
+
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         int size = Math.round(dp(48));

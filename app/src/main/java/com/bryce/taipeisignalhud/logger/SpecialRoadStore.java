@@ -1,4 +1,4 @@
-package com.bryce.taipeisignalhud;
+package com.bryce.taipeisignalhud.logger;
 
 import android.content.Context;
 import android.location.Location;

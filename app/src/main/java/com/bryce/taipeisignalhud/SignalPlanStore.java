@@ -122,7 +122,59 @@ public final class SignalPlanStore {
             if (p.pedFlash > 0 && p.green >= 15) major.add(i);
         }
 
-        if (major.size() < 2) return Estimate.unsupported();
+        if (major.size() < 2) {
+            // Conservative vehicle-phase fallback for official Taipei plans where
+            // pedestrian flash data is incomplete. Only promote when the structure
+            // still exposes two clearly dominant vehicle phases.
+            ArrayList<Integer> vehiclePhases = new ArrayList<>(4);
+            for (int i = 0; i < plan.phases.size(); i++) {
+                Phase p = plan.phases.get(i);
+                if (p.green >= 15) vehiclePhases.add(i);
+            }
+
+            if (vehiclePhases.size() == 2) {
+                major.clear();
+                major.add(vehiclePhases.get(0));
+                major.add(vehiclePhases.get(1));
+            } else if (major.size() == 1) {
+                int pedestrianPhase = major.get(0);
+                int best = -1;
+                int bestGreen = -1;
+                int secondBestGreen = -1;
+                for (int i : vehiclePhases) {
+                    if (i == pedestrianPhase) continue;
+                    int green = plan.phases.get(i).green;
+                    if (green > bestGreen) {
+                        secondBestGreen = bestGreen;
+                        bestGreen = green;
+                        best = i;
+                    } else if (green > secondBestGreen) {
+                        secondBestGreen = green;
+                    }
+                }
+
+                // Do not guess among several similarly sized movements. A dominant
+                // companion phase must clearly stand out from the next alternative.
+                boolean dominantCompanion = best >= 0
+                        && (secondBestGreen < 0 || bestGreen >= secondBestGreen * 1.50f);
+                if (dominantCompanion) {
+                    int a = pedestrianPhase;
+                    int b = best;
+                    major.clear();
+                    if (a < b) {
+                        major.add(a);
+                        major.add(b);
+                    } else {
+                        major.add(b);
+                        major.add(a);
+                    }
+                } else {
+                    return Estimate.unsupported();
+                }
+            } else {
+                return Estimate.unsupported();
+            }
+        }
 
         // When a plan contains extra protected-turn phases, use the two dominant
         // pedestrian/through phases only if the third-largest phase is clearly smaller.

@@ -31,7 +31,6 @@ public final class MainActivity extends Activity {
     private TextView speedValueView;
 
     private boolean bindingEnforcementSpinner;
-    private boolean bindingSpeedSpinner;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -53,10 +52,10 @@ public final class MainActivity extends Activity {
         root.setPadding(dp(20), dp(20), dp(20), dp(32));
         scroll.addView(root);
 
-        TextView title = text("TaipeiSignalHUD", 27, true);
+        TextView title = text("TaipeiSignal", 27, true);
         root.addView(title);
 
-        TextView subtitle = text("Road Test · v" + appVersion(), 14, false);
+        TextView subtitle = text("Android Auto + HUD + Logger · v" + appVersion(), 14, false);
         subtitle.setTextColor(Color.DKGRAY);
         root.addView(subtitle);
 
@@ -81,15 +80,20 @@ public final class MainActivity extends Activity {
 
         addDivider(root);
 
-        Button start = button("開始道路測試 Overlay");
+        Button start = button("開始整合模式（HUD + Logger + Android Auto）");
         start.setOnClickListener(v -> startHud(false));
         root.addView(start, fullWidth());
+
+        Button loggerSettings = button("Logger / MCP / AMap 採集設定");
+        loggerSettings.setOnClickListener(v ->
+                startActivity(new Intent(this, com.bryce.taipeisignalhud.logger.LoggerActivity.class)));
+        root.addView(loggerSettings, fullWidth());
 
         Button demo = button("Overlay 三色倒數預覽（DEMO）");
         demo.setOnClickListener(v -> startHud(true));
         root.addView(demo, fullWidth());
 
-        Button stop = button("停止 Overlay");
+        Button stop = button("停止 HUD + Logger");
         stop.setOnClickListener(v -> stopHud());
         root.addView(stop, fullWidth());
 
@@ -97,7 +101,7 @@ public final class MainActivity extends Activity {
                 "目前可調整：\n" +
                 "• 測速／科技執法／區間測速提醒距離：50、100、300、500 公尺或自訂。\n" +
                 "• Overlay 透明度：0–100%。0% 完全透明，100% 完全不透明。\n" +
-                "• 車速提醒：50、60、70 km/h 或自訂；超過門檻時顯示並語音提示。\n\n" +
+                "• 車速提醒：一般道路預設 60、快速道路 80、高速道路 100 km/h；三類皆可自訂。\n\n" +
                 "道路辨識：\n" +
                 "• GPS/GNSS 定位＋精度門檻、短期平滑、跳點排除與行進方向過濾。\n" +
                 "• 高架／快速道路／高速公路／隧道／地下道使用特殊道路幾何與道路層級判斷。\n" +
@@ -199,57 +203,56 @@ public final class MainActivity extends Activity {
     }
 
     private void addSpeedAlertSettings(LinearLayout root) {
-        root.addView(settingLabel("車速提示門檻"));
+        root.addView(settingLabel("車速提示門檻（依道路類型）"));
 
         speedValueView = valueText("");
         root.addView(speedValueView);
 
-        String[] labels = {
-                "50 km/h",
-                "60 km/h",
-                "70 km/h",
-                "自訂"
-        };
-        Spinner spinner = spinner(labels);
-        int current = UserSettings.speedAlertKmh(this);
-        int selected = speedPresetIndex(current);
-        bindingSpeedSpinner = true;
-        spinner.setSelection(selected, false);
-        bindingSpeedSpinner = false;
-        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override public void onItemSelected(
-                    AdapterView<?> parent, View view, int position, long id) {
-                if (bindingSpeedSpinner) return;
-                int kmh = speedPresetValue(position);
-                if (kmh > 0) {
-                    UserSettings.setSpeedAlertKmh(MainActivity.this, kmh);
-                    refreshSettingLabels();
-                    toast("車速提醒門檻已設為 " + kmh + " km/h");
-                }
-            }
-            @Override public void onNothingSelected(AdapterView<?> parent) {}
-        });
-        root.addView(spinner, fullWidth());
+        addSpeedThresholdRow(
+                root,
+                "一般道路（預設 60 km/h）",
+                UserSettings.generalSpeedAlertKmh(this),
+                0);
+        addSpeedThresholdRow(
+                root,
+                "快速道路（預設 80 km/h）",
+                UserSettings.expresswaySpeedAlertKmh(this),
+                1);
+        addSpeedThresholdRow(
+                root,
+                "高速道路（預設 100 km/h）",
+                UserSettings.highwaySpeedAlertKmh(this),
+                2);
+    }
 
-        LinearLayout customRow = horizontalRow();
+    private void addSpeedThresholdRow(
+            LinearLayout root, String label, int current, int roadType) {
+        TextView rowLabel = text(label, 14, true);
+        rowLabel.setPadding(0, dp(8), 0, 0);
+        root.addView(rowLabel);
+
+        LinearLayout row = horizontalRow();
         EditText custom = numberInput("自訂 km/h", Integer.toString(current));
-        customRow.addView(custom, weighted());
-        Button apply = smallButton("套用自訂");
+        row.addView(custom, weighted());
+        Button apply = smallButton("套用");
         apply.setOnClickListener(v -> {
             Integer value = parseInt(custom.getText().toString());
             if (value == null || value < 10 || value > 300) {
                 toast("請輸入 10～300 km/h。");
                 return;
             }
-            UserSettings.setSpeedAlertKmh(this, value);
-            bindingSpeedSpinner = true;
-            spinner.setSelection(speedPresetIndex(value), false);
-            bindingSpeedSpinner = false;
+            if (roadType == 2) {
+                UserSettings.setHighwaySpeedAlertKmh(this, value);
+            } else if (roadType == 1) {
+                UserSettings.setExpresswaySpeedAlertKmh(this, value);
+            } else {
+                UserSettings.setGeneralSpeedAlertKmh(this, value);
+            }
             refreshSettingLabels();
-            toast("車速提醒門檻已設為 " + value + " km/h");
+            toast(label.replaceAll("（.*$", "") + "車速提醒已設為 " + value + " km/h");
         });
-        customRow.addView(apply);
-        root.addView(customRow, fullWidth());
+        row.addView(apply);
+        root.addView(row, fullWidth());
     }
 
     private void refreshSettingLabels() {
@@ -263,7 +266,10 @@ public final class MainActivity extends Activity {
         }
         if (speedValueView != null) {
             speedValueView.setText(
-                    "目前：" + UserSettings.speedAlertKmh(this) + " km/h");
+                    "目前：一般 " + UserSettings.generalSpeedAlertKmh(this)
+                            + "｜快速 " + UserSettings.expresswaySpeedAlertKmh(this)
+                            + "｜高速 " + UserSettings.highwaySpeedAlertKmh(this)
+                            + " km/h");
         }
     }
 
@@ -283,27 +289,19 @@ public final class MainActivity extends Activity {
         return -1;
     }
 
-    private int speedPresetIndex(int value) {
-        if (value == 50) return 0;
-        if (value == 60) return 1;
-        if (value == 70) return 2;
-        return 3;
-    }
-
-    private int speedPresetValue(int index) {
-        if (index == 0) return 50;
-        if (index == 1) return 60;
-        if (index == 2) return 70;
-        return -1;
-    }
 
     private void refreshStatus() {
         boolean overlay = Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(this);
         boolean location = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
                 == PackageManager.PERMISSION_GRANTED;
+        boolean loggerActive = getSharedPreferences(
+                com.bryce.taipeisignalhud.logger.LoggerService.PREFS, MODE_PRIVATE)
+                .getBoolean(com.bryce.taipeisignalhud.logger.LoggerService.PREF_BACKGROUND_ACTIVE, false);
         statusView.setText(
                 "Overlay 權限：" + (overlay ? "OK" : "尚未開啟") +
-                "\nGPS 權限：" + (location ? "OK" : "尚未開啟"));
+                "\nGPS 權限：" + (location ? "OK" : "尚未開啟") +
+                "\nLogger：" + (loggerActive ? "RECORDING" : "IDLE") +
+                "\nAndroid Auto：同 APK / 共用 HUD 即時狀態");
         statusView.setTextColor(overlay && location
                 ? Color.rgb(25, 130, 70)
                 : Color.rgb(170, 65, 35));
@@ -349,12 +347,19 @@ public final class MainActivity extends Activity {
             return;
         }
 
+        if (!demo) {
+            Intent logger = new Intent(this, com.bryce.taipeisignalhud.logger.LoggerService.class)
+                    .setAction(com.bryce.taipeisignalhud.logger.LoggerService.ACTION_START);
+            if (Build.VERSION.SDK_INT >= 26) startForegroundService(logger); else startService(logger);
+        }
+
         Intent i = new Intent(this, HudService.class)
                 .setAction(demo ? HudService.ACTION_DEMO : HudService.ACTION_START);
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(i); else startService(i);
         Toast.makeText(this,
-                demo ? "已啟動 DEMO Overlay。" : "道路測試 Overlay 已啟動。",
-                Toast.LENGTH_SHORT).show();
+                demo ? "已啟動 DEMO Overlay。"
+                        : "整合模式已啟動：HUD + Logger；Android Auto 會讀取同一份即時狀態。",
+                Toast.LENGTH_LONG).show();
     }
 
     private void stopHud() {
@@ -364,7 +369,15 @@ public final class MainActivity extends Activity {
         } catch (Exception ignored) {
             stopService(new Intent(this, HudService.class));
         }
-        Toast.makeText(this, "Overlay 已停止。", Toast.LENGTH_SHORT).show();
+
+        Intent logger = new Intent(this, com.bryce.taipeisignalhud.logger.LoggerService.class)
+                .setAction(com.bryce.taipeisignalhud.logger.LoggerService.ACTION_STOP);
+        try {
+            startService(logger);
+        } catch (Exception ignored) {
+            stopService(new Intent(this, com.bryce.taipeisignalhud.logger.LoggerService.class));
+        }
+        Toast.makeText(this, "HUD 與 Logger 已停止。", Toast.LENGTH_SHORT).show();
     }
 
     private TextView text(String value, int sp, boolean bold) {

@@ -68,8 +68,11 @@ public final class EnforcementStore {
         return points.size();
     }
 
-    public Match findApproaching(Location location, Float travelBearingDeg) {
+    public Match findApproaching(
+            Location location, Float travelBearingDeg, String currentRoadKey) {
         if (location == null || travelBearingDeg == null) return null;
+        String roadKey = normalizeRoadText(currentRoadKey);
+        if (roadKey.isEmpty()) return null;
 
         float warningDistance = UserSettings.enforcementDistanceM(context);
         Point best = null;
@@ -77,6 +80,8 @@ public final class EnforcementStore {
         float[] result = new float[3];
 
         for (Point p : points) {
+            if (!pointMatchesRoad(p, roadKey)) continue;
+
             Location.distanceBetween(
                     location.getLatitude(),
                     location.getLongitude(),
@@ -131,6 +136,20 @@ public final class EnforcementStore {
         } catch (IOException ignored) {
         }
         return out;
+    }
+
+    private static boolean pointMatchesRoad(Point point, String roadKey) {
+        if (point == null || roadKey == null || roadKey.isEmpty()) return false;
+        String detail = normalizeRoadText(point.detail);
+        String title = normalizeRoadText(point.title);
+        return detail.contains(roadKey) || title.contains(roadKey);
+    }
+
+    private static String normalizeRoadText(String raw) {
+        if (raw == null) return "";
+        return raw.replace('\u3000', ' ')
+                .replaceAll("\\s+", "")
+                .replace("臺", "台");
     }
 
     private static boolean directionMatches(String direction, float travelBearing) {
