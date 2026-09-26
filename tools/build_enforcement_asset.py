@@ -5,6 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "app/src/main/assets/enforcement_points.psv"
+HIGHWAY_APPEND = ROOT / "data/derived/highway_speed_cameras_npa.psv"
 
 TAIPEI_SPEED = ROOT / "data/raw/taipei_speed_cameras.csv"
 TAIPEI_TECH = ROOT / "data/raw/taipei_tech_enforcement.csv"
@@ -166,5 +167,12 @@ with OUT.open("w", encoding="utf-8", newline="\n") as f:
     f.write("# id|type|lat|lon|title|detail|direction|limit\n")
     for row in rows:
         f.write("|".join(clean(v) for v in row) + "\n")
+    if HIGHWAY_APPEND.exists():
+        for line in HIGHWAY_APPEND.read_text(encoding="utf-8").splitlines():
+            if line and not line.startswith("#"):
+                f.write(line.rstrip("\n") + "\n")
 
-print(f"wrote {len(rows)} enforcement points -> {OUT}")
+extra = 0
+if HIGHWAY_APPEND.exists():
+    extra = sum(1 for line in HIGHWAY_APPEND.read_text(encoding="utf-8").splitlines() if line and not line.startswith("#"))
+print(f"wrote {len(rows) + extra} enforcement points -> {OUT}")
