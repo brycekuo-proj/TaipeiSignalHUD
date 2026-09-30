@@ -206,7 +206,7 @@
 | Android SignalLogger 專案 | /Users/user/Bryce AI Studio/SignalLogger/ |
 | Mac MCP、批次校正與學習工具 | /Users/user/Bryce AI Studio/SignalLogger/tools/；TaipeiSignalHUD/tools/ |
 | 本機接收／學習資料（非公開） | /Users/user/Bryce AI Studio/SignalLoggerData/ |
-| 本份完整專案總覽（文件備份） | /Users/user/Documents/青紅燈_TaipeiSignalHUD/README.md |
+| 本份完整專案總覽（文件備份） | /Users/user/Bryce AI Studio/Documents/青紅燈_TaipeiSignalHUD/README.md |
 | GitHub 專案首頁同步版本 | /Users/user/Bryce AI Studio/TaipeiSignalHUD/README.md |
 
 技術細節、建置指令與各版本 APK 請以程式庫中的實際原始碼、設定檔、技術文件及 releases 為準；本 README 是全專案的目的、用途與架構說明，**不取代可執行版本的 release note**。
